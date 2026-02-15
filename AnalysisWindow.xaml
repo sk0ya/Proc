@@ -122,10 +122,24 @@
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <Button Content="&#x25C0;" Style="{StaticResource NavButton}"
                             Click="PrevPeriod_Click" Margin="0,0,8,0" FontSize="10"/>
-                    <Button Content="{Binding PeriodLabel}" Style="{StaticResource NavButton}"
-                            Click="Today_Click" MinWidth="200" FontSize="13"/>
+                    <Button x:Name="PeriodButton" Content="{Binding PeriodLabel}" Style="{StaticResource NavButton}"
+                            Click="PeriodLabel_Click" MinWidth="200" FontSize="13"/>
                     <Button Content="&#x25B6;" Style="{StaticResource NavButton}"
                             Click="NextPeriod_Click" Margin="8,0,0,0" FontSize="10"/>
+                    <Popup x:Name="CalendarPopup" StaysOpen="False"
+                           PlacementTarget="{Binding ElementName=PeriodButton}"
+                           Placement="Bottom" AllowsTransparency="True">
+                        <Border Background="#252525" BorderBrush="#555555" BorderThickness="1"
+                                CornerRadius="4" Padding="4">
+                            <StackPanel>
+                                <Calendar x:Name="DateCalendar"
+                                          SelectedDatesChanged="DateCalendar_SelectedDatesChanged"/>
+                                <Button Content="Today" Style="{StaticResource NavButton}"
+                                        Click="CalendarToday_Click" HorizontalAlignment="Stretch"
+                                        Margin="4,2,4,2"/>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -158,8 +172,17 @@
 
             <!-- Left: App usage bars -->
             <DockPanel Grid.Column="0">
-                <TextBlock DockPanel.Dock="Top" Text="Application Usage"
-                           Style="{StaticResource HeaderText}" Margin="0,0,0,8"/>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <TextBlock Text="Application Usage"
+                               Style="{StaticResource HeaderText}"/>
+                    <Border x:Name="AllButton" DockPanel.Dock="Right" HorizontalAlignment="Right"
+                            Padding="10,3" CornerRadius="3" Cursor="Hand"
+                            Background="#2A2A2A" BorderBrush="#555555" BorderThickness="1"
+                            MouseLeftButtonDown="AllButton_Click">
+                        <TextBlock Text="All" FontFamily="Consolas" FontSize="12"
+                                   Foreground="#A0A0A0"/>
+                    </Border>
+                </DockPanel>
 
                 <!-- No data placeholder -->
                 <TextBlock Text="No activity data for this period"

@@ -21,6 +21,8 @@ public partial class AnalysisWindow : Window
         _vm.PropertyChanged += Vm_PropertyChanged;
     }
 
+    public void Refresh() => _vm.Refresh();
+
     private void Vm_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(AnalysisViewModel.TimelineBlocks)
@@ -42,7 +44,33 @@ public partial class AnalysisWindow : Window
 
     private void PrevPeriod_Click(object sender, RoutedEventArgs e) => _vm.NavigatePrevious();
     private void NextPeriod_Click(object sender, RoutedEventArgs e) => _vm.NavigateNext();
-    private void Today_Click(object sender, RoutedEventArgs e) => _vm.NavigateToday();
+
+    private void PeriodLabel_Click(object sender, RoutedEventArgs e)
+    {
+        DateCalendar.SelectedDate = _vm.ReferenceDate;
+        DateCalendar.DisplayDate = _vm.ReferenceDate;
+        CalendarPopup.IsOpen = true;
+    }
+
+    private void DateCalendar_SelectedDatesChanged(object? sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (DateCalendar.SelectedDate is DateTime selected)
+        {
+            CalendarPopup.IsOpen = false;
+            _vm.SetDate(selected);
+        }
+    }
+
+    private void CalendarToday_Click(object sender, RoutedEventArgs e)
+    {
+        CalendarPopup.IsOpen = false;
+        _vm.NavigateToday();
+    }
+
+    private void AllButton_Click(object sender, MouseButtonEventArgs e)
+    {
+        _vm.SelectAll();
+    }
 
     private void AppBar_Click(object sender, MouseButtonEventArgs e)
     {

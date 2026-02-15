@@ -21,7 +21,12 @@ public partial class MainWindow : Window
         ToggleTitleMenu.IsChecked = _showTitle;
 
         _logger = new ActivityLogger();
-        _logger.OnRecorded += () => Dispatcher.Invoke(RefreshList);
+        _logger.OnRecorded += () => Dispatcher.Invoke(() =>
+        {
+            RefreshList();
+            if (_analysisWindow is { IsLoaded: true })
+                _analysisWindow.Refresh();
+        });
         _logger.OnActiveChanged += () => Dispatcher.Invoke(RefreshList);
 
         Loaded += (_, _) =>

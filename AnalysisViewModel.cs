@@ -152,6 +152,22 @@ public class AnalysisViewModel : INotifyPropertyChanged
         RefreshDetail(processName);
     }
 
+    public void SelectAll()
+    {
+        SelectedAppName = "";
+
+        // Deselect all bar items
+        AppBars = _appBars.Select(b => b with { IsSelected = false }).ToList();
+
+        RefreshDetailAll();
+    }
+
+    public void SetDate(DateTime date)
+    {
+        ReferenceDate = date;
+        Refresh();
+    }
+
     public void Refresh()
     {
         var (start, end) = LogAnalyzer.GetDateRange(_referenceDate, _period);
@@ -240,6 +256,36 @@ public class AnalysisViewModel : INotifyPropertyChanged
                 items.Add(new DetailItem("Daily Breakdown", "", true));
                 foreach (var d in daily)
                     items.Add(new DetailItem(d.Date.ToString("MM/dd (ddd)"), LogAnalyzer.FormatTime(d.Minutes), false));
+            }
+        }
+
+        DetailItems = items;
+        HasDetail = items.Count > 0;
+    }
+
+    private void RefreshDetailAll()
+    {
+        if (_currentRecords == null || _currentRecords.Count == 0)
+        {
+            HasDetail = false;
+            return;
+        }
+
+        var items = new List<DetailItem>();
+        DetailHeader = $"All Apps - {LogAnalyzer.FormatTime(_currentRecords.Count)}";
+
+        // All window titles across all apps, grouped by process then title
+        var summaries = LogAnalyzer.Aggregate(_currentRecords, int.MaxValue);
+        foreach (var summary in summaries)
+        {
+            items.Add(new DetailItem($"{summary.ProcessName} ({LogAnalyzer.FormatTime(summary.TotalMinutes)})", "", true));
+            foreach (var title in summary.TitleBreakdown.Take(10))
+            {
+                var label = title.WindowTitle.Length > 80
+                    ? title.WindowTitle[..77] + "..."
+                    : title.WindowTitle;
+                if (string.IsNullOrWhiteSpace(label)) label = "(no title)";
+                items.Add(new DetailItem(label, LogAnalyzer.FormatTime(title.Minutes), false));
             }
         }
 
