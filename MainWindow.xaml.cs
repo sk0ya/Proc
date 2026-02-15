@@ -8,6 +8,7 @@ public partial class MainWindow : Window
 {
     private readonly ActivityLogger _logger;
     private bool _showTitle = true;
+    private AnalysisWindow? _analysisWindow;
 
     public MainWindow()
     {
@@ -75,6 +76,19 @@ public partial class MainWindow : Window
     private void TrayIcon_LeftClick(object sender, RoutedEventArgs e)
     {
         ToggleVisibility();
+    }
+
+    private void Analysis_Click(object sender, RoutedEventArgs e)
+    {
+        if (_analysisWindow == null || !_analysisWindow.IsLoaded)
+        {
+            _analysisWindow = new AnalysisWindow(
+                _logger.LogDirectory,
+                processName => IconHelper.GetIcon(_logger.GetExePath(processName)));
+            _analysisWindow.Closed += (_, _) => _analysisWindow = null;
+        }
+        _analysisWindow.Show();
+        _analysisWindow.Activate();
     }
 
     private void Exit_Click(object sender, RoutedEventArgs e)

@@ -16,6 +16,8 @@
             <MenuItem x:Name="ToggleTitleMenu" Header="Show Title" IsCheckable="True" IsChecked="True"
                       Click="ToggleTitle_Click"/>
             <Separator/>
+            <MenuItem Header="Analysis" Click="Analysis_Click"/>
+            <Separator/>
             <MenuItem Header="Exit" Click="Exit_Click"/>
         </ContextMenu>
     </Window.ContextMenu>
@@ -24,6 +26,8 @@
                         TrayLeftMouseDown="TrayIcon_LeftClick">
             <tb:TaskbarIcon.ContextMenu>
                 <ContextMenu>
+                    <MenuItem Header="Analysis" Click="Analysis_Click"/>
+                    <Separator/>
                     <MenuItem Header="Exit" Click="Exit_Click"/>
                 </ContextMenu>
             </tb:TaskbarIcon.ContextMenu>

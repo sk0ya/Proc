@@ -9,6 +9,7 @@ public class ActivityLogger : IDisposable
 {
     private readonly System.Threading.Timer _timer;
     private readonly string _logDir;
+    public string LogDirectory => _logDir;
     private IntPtr _winEventHook;
 
     private delegate void WinEventDelegate(
