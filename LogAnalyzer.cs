@@ -16,6 +16,13 @@ public record TitleUsage(string WindowTitle, int Minutes);
 
 public record DailyUsage(DateTime Date, int Minutes);
 
+public record TimelineBlock(
+    TimeSpan StartTime,
+    TimeSpan EndTime,
+    string ProcessName,
+    string WindowTitle,
+    int Minutes);
+
 public static class LogAnalyzer
 {
     public static (DateTime Start, DateTime End) GetDateRange(DateTime referenceDate, AnalysisPeriod period)
@@ -135,6 +142,52 @@ public static class LogAnalyzer
             AnalysisPeriod.Month => current.AddMonths(direction),
             _ => current
         };
+    }
+
+    public static List<TimelineBlock> BuildTimeline(
+        List<(DateTime Date, ActivityRecord Record)> records)
+    {
+        if (records.Count == 0) return [];
+
+        var sorted = records
+            .OrderBy(r => r.Record.Timestamp.TimeOfDay)
+            .ToList();
+
+        var blocks = new List<TimelineBlock>();
+        var current = sorted[0];
+        var blockStart = current.Record.Timestamp.TimeOfDay;
+        var blockEnd = blockStart.Add(TimeSpan.FromMinutes(1));
+        string blockProcess = current.Record.ProcessName;
+        string blockTitle = current.Record.WindowTitle;
+        int blockMinutes = 1;
+
+        for (int i = 1; i < sorted.Count; i++)
+        {
+            var rec = sorted[i].Record;
+            var time = rec.Timestamp.TimeOfDay;
+            var gap = time - blockEnd;
+
+            // Merge if same process and gap <= 2 minutes (accounts for missing entries)
+            if (rec.ProcessName == blockProcess && gap <= TimeSpan.FromMinutes(2))
+            {
+                blockEnd = time.Add(TimeSpan.FromMinutes(1));
+                blockMinutes++;
+                // Keep the most recent title
+                blockTitle = rec.WindowTitle;
+            }
+            else
+            {
+                blocks.Add(new TimelineBlock(blockStart, blockEnd, blockProcess, blockTitle, blockMinutes));
+                blockStart = time;
+                blockEnd = time.Add(TimeSpan.FromMinutes(1));
+                blockProcess = rec.ProcessName;
+                blockTitle = rec.WindowTitle;
+                blockMinutes = 1;
+            }
+        }
+        blocks.Add(new TimelineBlock(blockStart, blockEnd, blockProcess, blockTitle, blockMinutes));
+
+        return blocks;
     }
 
     public static string FormatTime(int minutes)

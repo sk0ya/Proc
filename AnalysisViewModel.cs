@@ -14,6 +14,9 @@ public class AnalysisViewModel : INotifyPropertyChanged
     private AnalysisPeriod _period = AnalysisPeriod.Day;
     private List<AppBarItem> _appBars = [];
     private List<DetailItem> _detailItems = [];
+    private List<TimelineBlock> _timelineBlocks = [];
+    private Dictionary<string, SolidColorBrush> _processColors = new();
+    private bool _isDayView = true;
     private string _periodLabel = "";
     private string _totalTimeText = "";
     private string _topAppText = "";
@@ -97,6 +100,24 @@ public class AnalysisViewModel : INotifyPropertyChanged
         private set { _hasDetail = value; OnPropertyChanged(nameof(HasDetail)); }
     }
 
+    public List<TimelineBlock> TimelineBlocks
+    {
+        get => _timelineBlocks;
+        private set { _timelineBlocks = value; OnPropertyChanged(nameof(TimelineBlocks)); }
+    }
+
+    public Dictionary<string, SolidColorBrush> ProcessColors
+    {
+        get => _processColors;
+        private set { _processColors = value; OnPropertyChanged(nameof(ProcessColors)); }
+    }
+
+    public bool IsDayView
+    {
+        get => _isDayView;
+        private set { _isDayView = value; OnPropertyChanged(nameof(IsDayView)); }
+    }
+
     public void SetPeriod(AnalysisPeriod period)
     {
         Period = period;
@@ -142,6 +163,17 @@ public class AnalysisViewModel : INotifyPropertyChanged
         TotalTimeText = $"Total: {LogAnalyzer.FormatTime(totalMinutes)}";
         TopAppText = summaries.Count > 0 ? $"Top: {summaries[0].ProcessName}" : "No data";
         HasData = summaries.Count > 0;
+        IsDayView = _period == AnalysisPeriod.Day;
+
+        // Build process -> color map (consistent across bar chart and timeline)
+        var colorMap = new Dictionary<string, SolidColorBrush>();
+        for (int i = 0; i < summaries.Count; i++)
+        {
+            var brush = new SolidColorBrush(BarPalette.GetColor(i));
+            brush.Freeze();
+            colorMap[summaries[i].ProcessName] = brush;
+        }
+        ProcessColors = colorMap;
 
         int maxMinutes = summaries.Count > 0 ? summaries.Max(s => s.TotalMinutes) : 1;
         var firstApp = summaries.Count > 0 ? summaries[0].ProcessName : "";
@@ -151,10 +183,16 @@ public class AnalysisViewModel : INotifyPropertyChanged
             LogAnalyzer.FormatTime(s.TotalMinutes),
             $"{s.Percentage}%",
             s.TotalMinutes / (double)maxMinutes,
-            new SolidColorBrush(BarPalette.GetColor(i)),
+            colorMap[s.ProcessName],
             s.ProcessName == "Other" ? null : _iconResolver(s.ProcessName),
             s.ProcessName == firstApp
         )).ToList();
+
+        // Build timeline for day view
+        if (_period == AnalysisPeriod.Day && _currentRecords.Count > 0)
+            TimelineBlocks = LogAnalyzer.BuildTimeline(_currentRecords);
+        else
+            TimelineBlocks = [];
 
         if (summaries.Count > 0)
         {

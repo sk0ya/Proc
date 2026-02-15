@@ -130,6 +130,24 @@
             </DockPanel>
         </Border>
 
+        <!-- Timeline (Day view only) -->
+        <Border DockPanel.Dock="Top" Background="#1A1A1A" Padding="12,8,12,4"
+                BorderBrush="#333333" BorderThickness="0,0,0,1"
+                Visibility="{Binding IsDayView, Converter={StaticResource BoolToVis}}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Timeline"
+                           Style="{StaticResource HeaderText}" Margin="0,0,0,4" FontSize="12"/>
+                <Grid Height="36">
+                    <!-- Hour labels -->
+                    <Canvas x:Name="TimelineHourLabels" Height="12" VerticalAlignment="Bottom"/>
+                    <!-- Activity blocks -->
+                    <Canvas x:Name="TimelineCanvas" Height="22" VerticalAlignment="Top"
+                            Background="#2A2A2A" ClipToBounds="True"
+                            SizeChanged="TimelineCanvas_SizeChanged"/>
+                </Grid>
+            </DockPanel>
+        </Border>
+
         <!-- Main content -->
         <Grid Margin="12">
             <Grid.ColumnDefinitions>
