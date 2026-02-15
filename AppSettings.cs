@@ -10,6 +10,7 @@ public class AppSettings
         "Proc", "settings.json");
 
     public bool ShowTitle { get; set; } = true;
+    public bool RunAsAdmin { get; set; } = false;
 
     public void Save()
     {

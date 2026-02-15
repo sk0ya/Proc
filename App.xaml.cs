@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Principal;
 using System.Threading;
 using System.Windows;
 
@@ -10,6 +11,27 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        var settings = AppSettings.Load();
+        if (settings.RunAsAdmin && !IsRunningAsAdmin())
+        {
+            try
+            {
+                var exePath = Environment.ProcessPath;
+                if (!string.IsNullOrEmpty(exePath))
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = exePath,
+                        UseShellExecute = true,
+                        Verb = "runas"
+                    });
+                }
+            }
+            catch { }
+            Shutdown();
+            return;
+        }
+
         _mutex = new Mutex(true, "Proc_SingleInstance_Mutex", out bool createdNew);
         if (!createdNew)
         {
@@ -22,6 +44,13 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         var window = new MainWindow();
         window.Show();
+    }
+
+    public static bool IsRunningAsAdmin()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        var principal = new WindowsPrincipal(identity);
+        return principal.IsInRole(WindowsBuiltInRole.Administrator);
     }
 
     private static void KillOtherInstances()
