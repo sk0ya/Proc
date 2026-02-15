@@ -96,9 +96,15 @@
         <!-- Top control bar -->
         <Border DockPanel.Dock="Top" Background="#252525" Padding="12,8"
                 BorderBrush="#333333" BorderThickness="0,0,0,1">
-            <DockPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
                 <!-- Period selector (left) -->
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
                     <RadioButton x:Name="DayRadio" Content="Day" GroupName="Period"
                                  Style="{StaticResource PeriodButton}" IsChecked="True"
                                  Checked="Period_Checked"/>
@@ -110,16 +116,8 @@
                                  Checked="Period_Checked"/>
                 </StackPanel>
 
-                <!-- Summary stats (right) -->
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right"
-                            HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding TotalTimeText}" Style="{StaticResource ValueText}"
-                               Margin="12,0"/>
-                    <TextBlock Text="{Binding TopAppText}" Style="{StaticResource LabelText}"/>
-                </StackPanel>
-
                 <!-- Date navigation (center) -->
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <Button Content="&#x25C0;" Style="{StaticResource NavButton}"
                             Click="PrevPeriod_Click" Margin="0,0,8,0" FontSize="10"/>
                     <Button x:Name="PeriodButton" Content="{Binding PeriodLabel}" Style="{StaticResource NavButton}"
@@ -141,7 +139,15 @@
                         </Border>
                     </Popup>
                 </StackPanel>
-            </DockPanel>
+
+                <!-- Summary stats (right) -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal"
+                            HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding TotalTimeText}" Style="{StaticResource ValueText}"
+                               Margin="12,0"/>
+                    <TextBlock Text="{Binding TopAppText}" Style="{StaticResource LabelText}"/>
+                </StackPanel>
+            </Grid>
         </Border>
 
         <!-- Timeline (Day view only) -->
