@@ -27,6 +27,8 @@
                         TrayLeftMouseDown="TrayIcon_LeftClick">
             <tb:TaskbarIcon.ContextMenu>
                 <ContextMenu>
+                    <MenuItem Header="Show/Hide" Click="ToggleVisibility_Click"/>
+                    <Separator/>
                     <MenuItem Header="Analysis" Click="Analysis_Click"/>
                     <MenuItem Header="Settings" Click="Settings_Click"/>
                     <Separator/>

@@ -97,6 +97,11 @@ public partial class MainWindow : Window
         ToggleVisibility();
     }
 
+    private void ToggleVisibility_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleVisibility();
+    }
+
     private void Analysis_Click(object sender, RoutedEventArgs e)
     {
         if (_analysisWindow == null || !_analysisWindow.IsLoaded)
