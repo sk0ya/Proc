@@ -33,9 +33,24 @@ public partial class MainWindow : Window
         {
             _logger.StartForegroundHook();
 
-            var area = SystemParameters.WorkArea;
-            Left = area.Right - ActualWidth;
-            Top = area.Bottom - ActualHeight;
+            if (_settings.WindowLeft.HasValue && _settings.WindowTop.HasValue)
+            {
+                Left = _settings.WindowLeft.Value;
+                Top = _settings.WindowTop.Value;
+            }
+            else
+            {
+                var area = SystemParameters.WorkArea;
+                Left = area.Right - ActualWidth;
+                Top = area.Bottom - ActualHeight;
+            }
+
+            LocationChanged += (_, _) =>
+            {
+                _settings.WindowLeft = Left;
+                _settings.WindowTop = Top;
+                _settings.Save();
+            };
         };
 
         RefreshList();
