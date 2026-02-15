@@ -42,6 +42,8 @@ public class ActivityLogger : IDisposable
     public string? CurrentProcessName { get; private set; }
     public string? CurrentWindowTitle { get; private set; }
 
+    private readonly Dictionary<string, string> _exePaths = new();
+
     public ActivityLogger()
     {
         _logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Proc", "logs");
@@ -117,7 +119,14 @@ public class ActivityLogger : IDisposable
         string processName;
         try
         {
-            processName = Process.GetProcessById((int)pid).ProcessName;
+            var proc = Process.GetProcessById((int)pid);
+            processName = proc.ProcessName;
+            try
+            {
+                if (proc.MainModule?.FileName is string path)
+                    _exePaths[processName] = path;
+            }
+            catch { }
         }
         catch
         {
@@ -147,6 +156,9 @@ public class ActivityLogger : IDisposable
         }
         return records;
     }
+
+    public string? GetExePath(string processName) =>
+        _exePaths.TryGetValue(processName, out var path) ? path : null;
 
     private string GetLogFilePath(DateTime date) =>
         Path.Combine(_logDir, $"{date:yyyy-MM-dd}.csv");

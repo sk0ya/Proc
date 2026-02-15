@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace Proc;
 
@@ -47,7 +48,8 @@ public partial class MainWindow : Window
             grouped = records
                 .GroupBy(r => (r.ProcessName, r.WindowTitle))
                 .Select(g => new ActivityRow(g.Count(), g.Key.ProcessName, g.Key.WindowTitle, titleVis,
-                    g.Key.ProcessName == activeProc && g.Key.WindowTitle == activeTitle))
+                    g.Key.ProcessName == activeProc && g.Key.WindowTitle == activeTitle,
+                    IconHelper.GetIcon(_logger.GetExePath(g.Key.ProcessName))))
                 .OrderByDescending(x => x.Minutes)
                 .ToList();
         }
@@ -56,7 +58,8 @@ public partial class MainWindow : Window
             grouped = records
                 .GroupBy(r => r.ProcessName)
                 .Select(g => new ActivityRow(g.Count(), g.Key, "", titleVis,
-                    g.Key == activeProc))
+                    g.Key == activeProc,
+                    IconHelper.GetIcon(_logger.GetExePath(g.Key))))
                 .OrderByDescending(x => x.Minutes)
                 .ToList();
         }
@@ -100,7 +103,7 @@ public partial class MainWindow : Window
     }
 }
 
-public record ActivityRow(int Minutes, string Process, string Title, Visibility TitleVisibility, bool IsActive)
+public record ActivityRow(int Minutes, string Process, string Title, Visibility TitleVisibility, bool IsActive, ImageSource? Icon)
 {
     public string TimeDisplay => Minutes >= 60 ? $"{Minutes / 60}h {Minutes % 60:D2}m" : $"{Minutes}m";
 }
