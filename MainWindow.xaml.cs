@@ -9,6 +9,7 @@ public partial class MainWindow : Window
     private readonly ActivityLogger _logger;
     private bool _showTitle = true;
     private AnalysisWindow? _analysisWindow;
+    private SettingsWindow? _settingsWindow;
 
     public MainWindow()
     {
@@ -89,6 +90,17 @@ public partial class MainWindow : Window
         }
         _analysisWindow.Show();
         _analysisWindow.Activate();
+    }
+
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        if (_settingsWindow == null || !_settingsWindow.IsLoaded)
+        {
+            _settingsWindow = new SettingsWindow();
+            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        }
+        _settingsWindow.Show();
+        _settingsWindow.Activate();
     }
 
     private void Exit_Click(object sender, RoutedEventArgs e)
