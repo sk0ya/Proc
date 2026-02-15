@@ -28,6 +28,16 @@ public class ActivityLogger : IDisposable
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
     [DllImport("user32.dll")]
+    private static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LASTINPUTINFO
+    {
+        public uint cbSize;
+        public uint dwTime;
+    }
+
+    [DllImport("user32.dll")]
     private static extern IntPtr SetWinEventHook(
         uint eventMin, uint eventMax, IntPtr hmodWinEventProc,
         WinEventDelegate lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
@@ -89,10 +99,21 @@ public class ActivityLogger : IDisposable
         }
     }
 
+    private static TimeSpan GetIdleTime()
+    {
+        var info = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
+        if (!GetLastInputInfo(ref info))
+            return TimeSpan.Zero;
+        return TimeSpan.FromMilliseconds((uint)Environment.TickCount - info.dwTime);
+    }
+
     private void OnTick(object? state)
     {
         try
         {
+            if (GetIdleTime().TotalSeconds >= 60)
+                return;
+
             var record = CaptureActiveWindow();
             if (record == null) return;
             CurrentProcessName = record.ProcessName;
