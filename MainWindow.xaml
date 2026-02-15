@@ -9,7 +9,8 @@
         ShowInTaskbar="False"
         SizeToContent="WidthAndHeight"
         ResizeMode="NoResize"
-        MouseLeftButtonDown="Window_MouseLeftButtonDown">
+        MouseLeftButtonDown="Window_MouseLeftButtonDown"
+        MouseDoubleClick="Window_MouseDoubleClick">
     <Window.ContextMenu>
         <ContextMenu>
             <MenuItem x:Name="ToggleTitleMenu" Header="Show Title" IsCheckable="True" IsChecked="True"
@@ -31,7 +32,7 @@
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
                     <StackPanel Orientation="Horizontal" x:Name="RowPanel">
-                        <TextBlock Text="{Binding TimeDisplay}" x:Name="MinutesText" Foreground="#80FF80" Width="46"
+                        <TextBlock Text="{Binding TimeDisplay}" x:Name="MinutesText" Foreground="White" Width="46"
                                    FontFamily="Consolas" FontSize="12" TextAlignment="Right" Margin="0,0,4,0"/>
                         <TextBlock Text="{Binding Process}" x:Name="ProcessText" Foreground="#A0A0A0"
                                    FontFamily="Consolas" FontSize="12"/>
@@ -41,6 +42,7 @@
                     </StackPanel>
                     <DataTemplate.Triggers>
                         <DataTrigger Binding="{Binding IsActive}" Value="True">
+                            <Setter TargetName="MinutesText" Property="Foreground" Value="#80FF80"/>
                             <Setter TargetName="ProcessText" Property="Foreground" Value="#FF8C00"/>
                             <Setter TargetName="TitleText" Property="Foreground" Value="#FF8C00"/>
                         </DataTrigger>

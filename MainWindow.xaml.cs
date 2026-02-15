@@ -14,9 +14,12 @@ public partial class MainWindow : Window
 
         _logger = new ActivityLogger();
         _logger.OnRecorded += () => Dispatcher.Invoke(RefreshList);
+        _logger.OnActiveChanged += () => Dispatcher.Invoke(RefreshList);
 
         Loaded += (_, _) =>
         {
+            _logger.StartForegroundHook();
+
             var area = SystemParameters.WorkArea;
             Left = area.Right - ActualWidth;
             Top = area.Bottom - ActualHeight;
@@ -79,7 +82,15 @@ public partial class MainWindow : Window
 
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        DragMove();
+        if (e.ClickCount == 1)
+            DragMove();
+    }
+
+    private void Window_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        _showTitle = !_showTitle;
+        ToggleTitleMenu.IsChecked = _showTitle;
+        RefreshList();
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)

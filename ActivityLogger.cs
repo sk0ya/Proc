@@ -9,6 +9,13 @@ public class ActivityLogger : IDisposable
 {
     private readonly System.Threading.Timer _timer;
     private readonly string _logDir;
+    private IntPtr _winEventHook;
+
+    private delegate void WinEventDelegate(
+        IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
+
+    private readonly WinEventDelegate _winEventProc;
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
@@ -19,7 +26,19 @@ public class ActivityLogger : IDisposable
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetWinEventHook(
+        uint eventMin, uint eventMax, IntPtr hmodWinEventProc,
+        WinEventDelegate lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
+
+    private const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
+    private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+
     public event Action? OnRecorded;
+    public event Action? OnActiveChanged;
     public string? CurrentProcessName { get; private set; }
     public string? CurrentWindowTitle { get; private set; }
 
@@ -27,7 +46,44 @@ public class ActivityLogger : IDisposable
     {
         _logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Proc", "logs");
         Directory.CreateDirectory(_logDir);
+
+        // Keep a reference to prevent GC collection of the delegate
+        _winEventProc = OnForegroundChanged;
+
         _timer = new System.Threading.Timer(OnTick, null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
+    }
+
+    public void StartForegroundHook()
+    {
+        _winEventHook = SetWinEventHook(
+            EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
+            IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+
+        // Capture initial state
+        UpdateCurrentWindow();
+    }
+
+    private void OnForegroundChanged(
+        IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+    {
+        UpdateCurrentWindow();
+        OnActiveChanged?.Invoke();
+    }
+
+    private void UpdateCurrentWindow()
+    {
+        try
+        {
+            var record = CaptureActiveWindow();
+            if (record == null) return;
+            CurrentProcessName = record.ProcessName;
+            CurrentWindowTitle = record.WindowTitle;
+        }
+        catch
+        {
+            // ignore
+        }
     }
 
     private void OnTick(object? state)
@@ -98,5 +154,10 @@ public class ActivityLogger : IDisposable
     public void Dispose()
     {
         _timer.Dispose();
+        if (_winEventHook != IntPtr.Zero)
+        {
+            UnhookWinEvent(_winEventHook);
+            _winEventHook = IntPtr.Zero;
+        }
     }
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading;
 using System.Windows;
 
@@ -15,7 +16,26 @@ public partial class App : System.Windows.Application
             Shutdown();
             return;
         }
+
+        KillOtherInstances();
+
         base.OnStartup(e);
+        var window = new MainWindow();
+        window.Show();
+    }
+
+    private static void KillOtherInstances()
+    {
+        var currentId = Environment.ProcessId;
+        var currentName = Process.GetCurrentProcess().ProcessName;
+        foreach (var proc in Process.GetProcessesByName(currentName))
+        {
+            if (proc.Id != currentId)
+            {
+                try { proc.Kill(); } catch { }
+            }
+            proc.Dispose();
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
