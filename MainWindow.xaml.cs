@@ -7,13 +7,18 @@ namespace Proc;
 public partial class MainWindow : Window
 {
     private readonly ActivityLogger _logger;
-    private bool _showTitle = true;
+    private readonly AppSettings _settings;
+    private bool _showTitle;
     private AnalysisWindow? _analysisWindow;
     private SettingsWindow? _settingsWindow;
 
     public MainWindow()
     {
         InitializeComponent();
+
+        _settings = AppSettings.Load();
+        _showTitle = _settings.ShowTitle;
+        ToggleTitleMenu.IsChecked = _showTitle;
 
         _logger = new ActivityLogger();
         _logger.OnRecorded += () => Dispatcher.Invoke(RefreshList);
@@ -68,10 +73,18 @@ public partial class MainWindow : Window
         ActivityList.ItemsSource = grouped;
     }
 
+    private void SetShowTitle(bool value)
+    {
+        _showTitle = value;
+        ToggleTitleMenu.IsChecked = value;
+        _settings.ShowTitle = value;
+        _settings.Save();
+        RefreshList();
+    }
+
     private void ToggleTitle_Click(object sender, RoutedEventArgs e)
     {
-        _showTitle = ToggleTitleMenu.IsChecked;
-        RefreshList();
+        SetShowTitle(ToggleTitleMenu.IsChecked);
     }
 
     private void TrayIcon_LeftClick(object sender, RoutedEventArgs e)
@@ -96,7 +109,8 @@ public partial class MainWindow : Window
     {
         if (_settingsWindow == null || !_settingsWindow.IsLoaded)
         {
-            _settingsWindow = new SettingsWindow();
+            _settingsWindow = new SettingsWindow(_showTitle);
+            _settingsWindow.ShowTitleChanged += SetShowTitle;
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         }
         _settingsWindow.Show();
@@ -117,9 +131,7 @@ public partial class MainWindow : Window
 
     private void Window_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        _showTitle = !_showTitle;
-        ToggleTitleMenu.IsChecked = _showTitle;
-        RefreshList();
+        SetShowTitle(!_showTitle);
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)

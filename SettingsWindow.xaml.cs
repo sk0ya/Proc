@@ -9,10 +9,13 @@ public partial class SettingsWindow : Window
     private const string RegistryKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
     private const string AppName = "Proc";
 
-    public SettingsWindow()
+    public event Action<bool>? ShowTitleChanged;
+
+    public SettingsWindow(bool showTitle)
     {
         InitializeComponent();
         StartupCheckBox.IsChecked = IsStartupEnabled();
+        ShowTitleCheckBox.IsChecked = showTitle;
     }
 
     private static bool IsStartupEnabled()
@@ -41,6 +44,11 @@ public partial class SettingsWindow : Window
     private void StartupCheckBox_Changed(object sender, RoutedEventArgs e)
     {
         SetStartupEnabled(StartupCheckBox.IsChecked == true);
+    }
+
+    private void ShowTitleCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        ShowTitleChanged?.Invoke(ShowTitleCheckBox.IsChecked == true);
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
