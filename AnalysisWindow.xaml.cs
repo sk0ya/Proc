@@ -156,7 +156,7 @@ public partial class AnalysisWindow : Window
         }
 
         // Draw hour labels
-        var labelBrush = new SolidColorBrush(Color.FromRgb(0x70, 0x70, 0x70));
+        var labelBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
         labelBrush.Freeze();
         var tickBrush = new SolidColorBrush(Color.FromRgb(0x40, 0x40, 0x40));
         tickBrush.Freeze();
