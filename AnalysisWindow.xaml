@@ -5,6 +5,8 @@
         Title="Proc - Activity Analysis"
         Width="900" Height="600"
         MinWidth="700" MinHeight="400"
+        WindowStyle="None"
+        AllowsTransparency="True"
         Background="{DynamicResource ThemeBg}"
         WindowStartupLocation="CenterScreen"
         Icon="/Proc.ico"
@@ -93,6 +95,20 @@
     </Window.Resources>
 
     <DockPanel>
+        <!-- Custom title bar -->
+        <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeSurface}" Padding="12,6"
+                BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="0,0,0,1"
+                MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="&#xD7;" FontSize="18"
+                        Background="Transparent" Foreground="{DynamicResource ThemeSubText}"
+                        BorderThickness="0" Cursor="Hand" Padding="8,0"
+                        Click="CloseButton_Click" VerticalAlignment="Center"/>
+                <TextBlock Text="Proc - Activity Analysis" FontFamily="Consolas" FontSize="13"
+                           Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center"/>
+            </DockPanel>
+        </Border>
+
         <!-- Top control bar -->
         <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeSurface}" Padding="12,8"
                 BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="0,0,0,1">

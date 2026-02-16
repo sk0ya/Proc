@@ -78,6 +78,22 @@ public partial class AnalysisWindow : Window
             _vm.SelectApp(item.ProcessName);
     }
 
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 2)
+        {
+            WindowState = WindowState == WindowState.Maximized
+                ? WindowState.Normal
+                : WindowState.Maximized;
+        }
+        else
+        {
+            DragMove();
+        }
+    }
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
         switch (e.Key)
