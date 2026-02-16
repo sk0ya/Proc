@@ -5,7 +5,7 @@
         Title="Proc - Activity Analysis"
         Width="900" Height="600"
         MinWidth="700" MinHeight="400"
-        Background="#FF1E1E1E"
+        Background="{DynamicResource ThemeBg}"
         WindowStartupLocation="CenterScreen"
         Icon="/Proc.ico"
         KeyDown="Window_KeyDown">
@@ -15,29 +15,29 @@
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
         <Style x:Key="LabelText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#A0A0A0"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeSubText}"/>
             <Setter Property="FontFamily" Value="Consolas"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
         <Style x:Key="ValueText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#D0D0D0"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
             <Setter Property="FontFamily" Value="Consolas"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
         <Style x:Key="HeaderText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#FF8C00"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeAccent}"/>
             <Setter Property="FontFamily" Value="Consolas"/>
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="Bold"/>
         </Style>
 
         <Style x:Key="NavButton" TargetType="Button">
-            <Setter Property="Background" Value="#333333"/>
-            <Setter Property="Foreground" Value="#D0D0D0"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeBorder}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
             <Setter Property="FontFamily" Value="Consolas"/>
-            <Setter Property="BorderBrush" Value="#555555"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeCheckBorder}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="8,4"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -52,10 +52,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#444444"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeHover}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#555555"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemePressed}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -64,7 +64,7 @@
         </Style>
 
         <Style x:Key="PeriodButton" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="#A0A0A0"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeSubText}"/>
             <Setter Property="FontFamily" Value="Consolas"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Padding" Value="12,6"/>
@@ -79,11 +79,11 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#FF8C00"/>
-                                <Setter Property="Foreground" Value="#FF8C00"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeAccent}"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#2A2A2A"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeSurfaceAlt}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -94,8 +94,8 @@
 
     <DockPanel>
         <!-- Top control bar -->
-        <Border DockPanel.Dock="Top" Background="#252525" Padding="12,8"
-                BorderBrush="#333333" BorderThickness="0,0,0,1">
+        <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeSurface}" Padding="12,8"
+                BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="0,0,0,1">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -127,7 +127,8 @@
                     <Popup x:Name="CalendarPopup" StaysOpen="False"
                            PlacementTarget="{Binding ElementName=PeriodButton}"
                            Placement="Bottom" AllowsTransparency="True">
-                        <Border Background="#252525" BorderBrush="#555555" BorderThickness="1"
+                        <Border Background="{DynamicResource ThemeSurface}"
+                                BorderBrush="{DynamicResource ThemeCheckBorder}" BorderThickness="1"
                                 CornerRadius="4" Padding="4">
                             <StackPanel>
                                 <Calendar x:Name="DateCalendar"
@@ -151,8 +152,8 @@
         </Border>
 
         <!-- Timeline (Day view only) -->
-        <Border DockPanel.Dock="Top" Background="#1A1A1A" Padding="12,8,12,4"
-                BorderBrush="#333333" BorderThickness="0,0,0,1"
+        <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeSurfaceAlt}" Padding="12,8,12,4"
+                BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="0,0,0,1"
                 Visibility="{Binding IsDayView, Converter={StaticResource BoolToVis}}">
             <DockPanel>
                 <TextBlock DockPanel.Dock="Top" Text="Timeline"
@@ -162,7 +163,7 @@
                     <Canvas x:Name="TimelineHourLabels" Height="12" VerticalAlignment="Bottom"/>
                     <!-- Activity blocks -->
                     <Canvas x:Name="TimelineCanvas" Height="22" VerticalAlignment="Top"
-                            Background="#2A2A2A" ClipToBounds="True"
+                            Background="{DynamicResource ThemeSurfaceAlt}" ClipToBounds="True"
                             SizeChanged="TimelineCanvas_SizeChanged"/>
                 </Grid>
             </DockPanel>
@@ -183,10 +184,11 @@
                                Style="{StaticResource HeaderText}"/>
                     <Border x:Name="AllButton" DockPanel.Dock="Right" HorizontalAlignment="Right"
                             Padding="10,3" CornerRadius="3" Cursor="Hand"
-                            Background="#2A2A2A" BorderBrush="#555555" BorderThickness="1"
+                            Background="{DynamicResource ThemeSurfaceAlt}"
+                            BorderBrush="{DynamicResource ThemeCheckBorder}" BorderThickness="1"
                             MouseLeftButtonDown="AllButton_Click">
                         <TextBlock Text="All" FontFamily="Consolas" FontSize="12"
-                                   Foreground="#A0A0A0"/>
+                                   Foreground="{DynamicResource ThemeSubText}"/>
                     </Border>
                 </DockPanel>
 
@@ -219,13 +221,13 @@
 
                                         <!-- Process name -->
                                         <TextBlock Grid.Column="1" Text="{Binding ProcessName}"
-                                                   Foreground="#D0D0D0" FontFamily="Consolas" FontSize="12"
+                                                   Foreground="{DynamicResource ThemeText}" FontFamily="Consolas" FontSize="12"
                                                    VerticalAlignment="Center" Margin="4,0,8,0"
                                                    TextTrimming="CharacterEllipsis"/>
 
                                         <!-- Bar -->
                                         <Grid Grid.Column="2" Height="16" VerticalAlignment="Center" Margin="0,0,8,0">
-                                            <Border CornerRadius="2" Background="#2A2A2A"/>
+                                            <Border CornerRadius="2" Background="{DynamicResource ThemeSurfaceAlt}"/>
                                             <Border CornerRadius="2" Background="{Binding BarBrush}"
                                                     HorizontalAlignment="Stretch"
                                                     RenderTransformOrigin="0,0.5">
@@ -237,10 +239,10 @@
 
                                         <!-- Time + Percent -->
                                         <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding TimeText}" Foreground="#D0D0D0"
+                                            <TextBlock Text="{Binding TimeText}" Foreground="{DynamicResource ThemeText}"
                                                        FontFamily="Consolas" FontSize="12" MinWidth="50"
                                                        TextAlignment="Right"/>
-                                            <TextBlock Text="{Binding PercentText}" Foreground="#707070"
+                                            <TextBlock Text="{Binding PercentText}" Foreground="{DynamicResource ThemeDimText}"
                                                        FontFamily="Consolas" FontSize="11" Margin="6,0,0,0"
                                                        MinWidth="40"/>
                                         </StackPanel>
@@ -248,10 +250,10 @@
                                 </Border>
                                 <DataTemplate.Triggers>
                                     <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                        <Setter TargetName="BarRow" Property="Background" Value="#2A2A2A"/>
+                                        <Setter TargetName="BarRow" Property="Background" Value="{DynamicResource ThemeSurfaceAlt}"/>
                                     </DataTrigger>
                                     <Trigger SourceName="BarRow" Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="BarRow" Property="Background" Value="#333333"/>
+                                        <Setter TargetName="BarRow" Property="Background" Value="{DynamicResource ThemeBorder}"/>
                                     </Trigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
@@ -263,7 +265,7 @@
             <!-- GridSplitter -->
             <GridSplitter Grid.Column="1" Width="4" Margin="4,0"
                           HorizontalAlignment="Center" VerticalAlignment="Stretch"
-                          Background="#333333"/>
+                          Background="{DynamicResource ThemeBorder}"/>
 
             <!-- Right: Detail panel -->
             <DockPanel Grid.Column="2">
@@ -284,16 +286,16 @@
                                 <DockPanel x:Name="DetailRow" Margin="0,2">
                                     <TextBlock x:Name="ValueText" DockPanel.Dock="Right"
                                                Text="{Binding Value}"
-                                               Foreground="#D0D0D0" FontFamily="Consolas" FontSize="12"
+                                               Foreground="{DynamicResource ThemeText}" FontFamily="Consolas" FontSize="12"
                                                VerticalAlignment="Center" Margin="8,0,0,0"/>
                                     <TextBlock x:Name="LabelText" Text="{Binding Label}"
                                                TextTrimming="CharacterEllipsis"
-                                               Foreground="#A0A0A0" FontFamily="Consolas" FontSize="12"
+                                               Foreground="{DynamicResource ThemeSubText}" FontFamily="Consolas" FontSize="12"
                                                VerticalAlignment="Center"/>
                                 </DockPanel>
                                 <DataTemplate.Triggers>
                                     <DataTrigger Binding="{Binding IsHeader}" Value="True">
-                                        <Setter TargetName="LabelText" Property="Foreground" Value="#FF8C00"/>
+                                        <Setter TargetName="LabelText" Property="Foreground" Value="{DynamicResource ThemeAccent}"/>
                                         <Setter TargetName="LabelText" Property="FontWeight" Value="Bold"/>
                                         <Setter TargetName="DetailRow" Property="Margin" Value="0,10,0,4"/>
                                     </DataTrigger>

@@ -13,6 +13,7 @@ public class AppSettings
     public bool RunAsAdmin { get; set; } = false;
     public double? WindowLeft { get; set; }
     public double? WindowTop { get; set; }
+    public string ThemeName { get; set; } = "Dark-Orange";
 
     public void Save()
     {

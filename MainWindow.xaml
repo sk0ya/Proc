@@ -4,7 +4,7 @@
         xmlns:tb="http://www.hardcodet.net/taskbar"
         WindowStyle="None"
         AllowsTransparency="True"
-        Background="#E0202020"
+        Background="{DynamicResource ThemeBgTransparent}"
         Topmost="True"
         ShowInTaskbar="False"
         SizeToContent="WidthAndHeight"
@@ -44,21 +44,24 @@
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
                     <StackPanel Orientation="Horizontal" x:Name="RowPanel">
-                        <TextBlock Text="{Binding TimeDisplay}" x:Name="MinutesText" Foreground="White"
+                        <TextBlock Text="{Binding TimeDisplay}" x:Name="MinutesText"
+                                   Foreground="{DynamicResource ThemeText}"
                                    FontFamily="Consolas" FontSize="12" TextAlignment="Right" Margin="0,0,4,0"/>
                         <Image Source="{Binding Icon}" Width="14" Height="14" Margin="0,1,4,0"
                                VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
-                        <TextBlock Text="{Binding Process}" x:Name="ProcessText" Foreground="#A0A0A0"
+                        <TextBlock Text="{Binding Process}" x:Name="ProcessText"
+                                   Foreground="{DynamicResource ThemeSubText}"
                                    FontFamily="Consolas" FontSize="12"/>
-                        <TextBlock Text="{Binding Title}" x:Name="TitleText" Foreground="#D0D0D0"
+                        <TextBlock Text="{Binding Title}" x:Name="TitleText"
+                                   Foreground="{DynamicResource ThemeText}"
                                    FontFamily="Consolas" FontSize="12" Margin="6,0,0,0"
                                    Visibility="{Binding TitleVisibility}"/>
                     </StackPanel>
                     <DataTemplate.Triggers>
                         <DataTrigger Binding="{Binding IsActive}" Value="True">
-                            <Setter TargetName="MinutesText" Property="Foreground" Value="#80FF80"/>
-                            <Setter TargetName="ProcessText" Property="Foreground" Value="#FF8C00"/>
-                            <Setter TargetName="TitleText" Property="Foreground" Value="#FF8C00"/>
+                            <Setter TargetName="MinutesText" Property="Foreground" Value="{DynamicResource ThemeActiveTime}"/>
+                            <Setter TargetName="ProcessText" Property="Foreground" Value="{DynamicResource ThemeActiveAccent}"/>
+                            <Setter TargetName="TitleText" Property="Foreground" Value="{DynamicResource ThemeActiveAccent}"/>
                         </DataTrigger>
                     </DataTemplate.Triggers>
                 </DataTemplate>

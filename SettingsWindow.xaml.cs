@@ -1,5 +1,7 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using Microsoft.Win32;
 
 namespace Proc;
@@ -19,6 +21,22 @@ public partial class SettingsWindow : Window
         StartupCheckBox.IsChecked = IsStartupEnabled();
         ShowTitleCheckBox.IsChecked = showTitle;
         RunAsAdminCheckBox.IsChecked = AppSettings.Load().RunAsAdmin;
+
+        // Populate theme combo
+        var currentTheme = AppSettings.Load().ThemeName;
+        foreach (var theme in ColorTheme.All)
+        {
+            var item = new ComboBoxItem
+            {
+                Content = theme.DisplayName,
+                Tag = new SolidColorBrush(theme.Accent),
+                DataContext = theme,
+            };
+            ThemeComboBox.Items.Add(item);
+            if (theme.Name == currentTheme)
+                ThemeComboBox.SelectedItem = item;
+        }
+
         _initialized = true;
     }
 
@@ -62,6 +80,18 @@ public partial class SettingsWindow : Window
         var settings = AppSettings.Load();
         settings.RunAsAdmin = RunAsAdminCheckBox.IsChecked == true;
         settings.Save();
+    }
+
+    private void ThemeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_initialized) return;
+        if (ThemeComboBox.SelectedItem is ComboBoxItem { DataContext: ColorTheme theme })
+        {
+            theme.Apply();
+            var settings = AppSettings.Load();
+            settings.ThemeName = theme.Name;
+            settings.Save();
+        }
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)

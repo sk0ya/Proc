@@ -156,10 +156,8 @@ public partial class AnalysisWindow : Window
         }
 
         // Draw hour labels
-        var labelBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
-        labelBrush.Freeze();
-        var tickBrush = new SolidColorBrush(Color.FromRgb(0x40, 0x40, 0x40));
-        tickBrush.Freeze();
+        var labelBrush = (SolidColorBrush)FindResource("ThemeText");
+        var tickBrush = (SolidColorBrush)FindResource("ThemeBorder");
 
         for (int h = startHour; h <= endHour; h++)
         {
@@ -200,32 +198,33 @@ public partial class AnalysisWindow : Window
         if (string.IsNullOrWhiteSpace(title)) title = "(no title)";
 
         var sp = new StackPanel { MaxWidth = 350 };
+        var res = Application.Current.Resources;
         sp.Children.Add(new TextBlock
         {
             Text = block.ProcessName,
             FontFamily = new FontFamily("Consolas"),
             FontWeight = FontWeights.Bold,
-            Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x8C, 0x00))
+            Foreground = (SolidColorBrush)res["ThemeAccent"]
         });
         sp.Children.Add(new TextBlock
         {
             Text = title,
             FontFamily = new FontFamily("Consolas"),
             TextWrapping = TextWrapping.Wrap,
-            Foreground = new SolidColorBrush(Color.FromRgb(0xD0, 0xD0, 0xD0))
+            Foreground = (SolidColorBrush)res["ThemeText"]
         });
         sp.Children.Add(new TextBlock
         {
             Text = $"{start} - {end} ({LogAnalyzer.FormatTime(block.Minutes)})",
             FontFamily = new FontFamily("Consolas"),
-            Foreground = new SolidColorBrush(Color.FromRgb(0xA0, 0xA0, 0xA0)),
+            Foreground = (SolidColorBrush)res["ThemeSubText"],
             Margin = new Thickness(0, 2, 0, 0)
         });
         return new ToolTip
         {
             Content = sp,
-            Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2A)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)),
+            Background = (SolidColorBrush)res["ThemeSurfaceAlt"],
+            BorderBrush = (SolidColorBrush)res["ThemeCheckBorder"],
             Padding = new Thickness(8, 6, 8, 6)
         };
     }

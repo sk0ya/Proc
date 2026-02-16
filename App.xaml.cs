@@ -41,6 +41,9 @@ public partial class App : System.Windows.Application
 
         KillOtherInstances();
 
+        // Apply saved theme
+        ColorTheme.GetByName(settings.ThemeName).Apply();
+
         base.OnStartup(e);
         var window = new MainWindow();
         window.Show();
