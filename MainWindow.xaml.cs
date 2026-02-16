@@ -77,7 +77,7 @@ public partial class MainWindow : Window
                 .GroupBy(r => (r.ProcessName, r.WindowTitle))
                 .Select(g => new ActivityRow(g.Count(), g.Key.ProcessName, g.Key.WindowTitle, titleVis,
                     g.Key.ProcessName == activeProc && g.Key.WindowTitle == activeTitle,
-                    IconHelper.GetIcon(_logger.GetExePath(g.Key.ProcessName))))
+                    IconHelper.GetIconByProcessName(g.Key.ProcessName)))
                 .OrderByDescending(x => x.Minutes)
                 .ToList();
         }
@@ -87,7 +87,7 @@ public partial class MainWindow : Window
                 .GroupBy(r => r.ProcessName)
                 .Select(g => new ActivityRow(g.Count(), g.Key, "", titleVis,
                     g.Key == activeProc,
-                    IconHelper.GetIcon(_logger.GetExePath(g.Key))))
+                    IconHelper.GetIconByProcessName(g.Key)))
                 .OrderByDescending(x => x.Minutes)
                 .ToList();
         }
@@ -122,9 +122,7 @@ public partial class MainWindow : Window
     {
         if (_analysisWindow == null || !_analysisWindow.IsLoaded)
         {
-            _analysisWindow = new AnalysisWindow(
-                _logger.LogDirectory,
-                processName => IconHelper.GetIcon(_logger.GetExePath(processName)));
+            _analysisWindow = new AnalysisWindow(_logger.LogDirectory);
             _analysisWindow.Closed += (_, _) => _analysisWindow = null;
         }
         _analysisWindow.Show();

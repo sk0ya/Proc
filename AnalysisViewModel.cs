@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace Proc;
 
@@ -8,7 +10,7 @@ public class AnalysisViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private readonly string _logDirectory;
-    private readonly Func<string, ImageSource?> _iconResolver;
+    private readonly Dispatcher _dispatcher;
 
     private DateTime _referenceDate = DateTime.Today;
     private AnalysisPeriod _period = AnalysisPeriod.Day;
@@ -27,10 +29,10 @@ public class AnalysisViewModel : INotifyPropertyChanged
 
     private List<(DateTime Date, ActivityRecord Record)>? _currentRecords;
 
-    public AnalysisViewModel(string logDirectory, Func<string, ImageSource?> iconResolver)
+    public AnalysisViewModel(string logDirectory)
     {
         _logDirectory = logDirectory;
-        _iconResolver = iconResolver;
+        _dispatcher = Application.Current.Dispatcher;
         Refresh();
     }
 
@@ -200,9 +202,12 @@ public class AnalysisViewModel : INotifyPropertyChanged
             $"{s.Percentage}%",
             s.TotalMinutes / (double)maxMinutes,
             colorMap[s.ProcessName],
-            s.ProcessName == "Other" ? null : _iconResolver(s.ProcessName),
+            null,
             s.ProcessName == firstApp
         )).ToList();
+
+        // Load icons asynchronously
+        LoadIconsAsync(summaries.Select(s => s.ProcessName).ToList());
 
         // Build timeline for day view
         if (_period == AnalysisPeriod.Day && _currentRecords.Count > 0)
@@ -221,6 +226,31 @@ public class AnalysisViewModel : INotifyPropertyChanged
             DetailHeader = "";
             HasDetail = false;
         }
+    }
+
+    private async void LoadIconsAsync(List<string> processNames)
+    {
+        var icons = await Task.Run(() =>
+        {
+            var result = new Dictionary<string, ImageSource?>();
+            foreach (var name in processNames)
+            {
+                if (name == "Other") continue;
+                result[name] = IconHelper.GetIconByProcessName(name);
+            }
+            return result;
+        });
+
+        // Update AppBars with resolved icons on UI thread
+        _dispatcher.Invoke(() =>
+        {
+            AppBars = _appBars.Select(b =>
+            {
+                if (icons.TryGetValue(b.ProcessName, out var icon) && icon != null)
+                    return b with { Icon = icon };
+                return b;
+            }).ToList();
+        });
     }
 
     private void RefreshDetail(string processName)

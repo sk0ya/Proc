@@ -13,10 +13,10 @@ public partial class AnalysisWindow : Window
 {
     private readonly AnalysisViewModel _vm;
 
-    public AnalysisWindow(string logDirectory, Func<string, ImageSource?> iconResolver)
+    public AnalysisWindow(string logDirectory)
     {
         InitializeComponent();
-        _vm = new AnalysisViewModel(logDirectory, iconResolver);
+        _vm = new AnalysisViewModel(logDirectory);
         DataContext = _vm;
         _vm.PropertyChanged += Vm_PropertyChanged;
     }

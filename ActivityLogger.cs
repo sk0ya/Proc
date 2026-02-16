@@ -146,7 +146,10 @@ public class ActivityLogger : IDisposable
             try
             {
                 if (proc.MainModule?.FileName is string path)
+                {
                     _exePaths[processName] = path;
+                    IconHelper.RegisterExePath(processName, path);
+                }
             }
             catch { }
         }
