@@ -1,3 +1,4 @@
+using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -140,6 +141,30 @@ public partial class MainWindow : Window
         }
         _settingsWindow.Show();
         _settingsWindow.Activate();
+    }
+
+    private void Import_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+            Title = "Import Activity Log"
+        };
+        if (dlg.ShowDialog(this) == true)
+        {
+            try
+            {
+                int count = ImportHelper.Import(dlg.FileName, _logger.LogDirectory);
+                MessageBox.Show(this, $"{count} records imported.", "Import", MessageBoxButton.OK, MessageBoxImage.Information);
+                RefreshList();
+                if (_analysisWindow is { IsLoaded: true })
+                    _analysisWindow.Refresh();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Import failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
     }
 
     private void Exit_Click(object sender, RoutedEventArgs e)

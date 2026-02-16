@@ -19,6 +19,8 @@
             <MenuItem Header="Analysis" Click="Analysis_Click"/>
             <MenuItem Header="Settings" Click="Settings_Click"/>
             <Separator/>
+            <MenuItem Header="Import CSV..." Click="Import_Click"/>
+            <Separator/>
             <MenuItem Header="Exit" Click="Exit_Click"/>
         </ContextMenu>
     </Window.ContextMenu>
@@ -31,6 +33,8 @@
                     <Separator/>
                     <MenuItem Header="Analysis" Click="Analysis_Click"/>
                     <MenuItem Header="Settings" Click="Settings_Click"/>
+                    <Separator/>
+                    <MenuItem Header="Import CSV..." Click="Import_Click"/>
                     <Separator/>
                     <MenuItem Header="Exit" Click="Exit_Click"/>
                 </ContextMenu>
