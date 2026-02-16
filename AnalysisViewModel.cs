@@ -212,8 +212,8 @@ public class AnalysisViewModel : INotifyPropertyChanged
 
         if (summaries.Count > 0)
         {
-            SelectedAppName = firstApp;
-            RefreshDetail(firstApp);
+            SelectedAppName = "";
+            RefreshDetailAll();
         }
         else
         {
