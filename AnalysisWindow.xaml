@@ -68,6 +68,7 @@
         <!-- Scrollbar styling -->
         <Style TargetType="ScrollBar">
             <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Width" Value="8"/>
             <Setter Property="Margin" Value="0"/>
             <Setter Property="Padding" Value="0"/>
             <Style.Triggers>
@@ -274,7 +275,7 @@
         </Border>
 
         <!-- Main content -->
-        <Grid Margin="12">
+        <Grid Margin="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="3*" />
                 <ColumnDefinition Width="Auto"/>
