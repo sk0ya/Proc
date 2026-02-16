@@ -41,8 +41,10 @@ public partial class App : System.Windows.Application
 
         KillOtherInstances();
 
-        // Apply saved theme
-        ColorTheme.GetByName(settings.ThemeName).Apply();
+        // Apply saved theme from custom colors
+        ColorTheme.FromColors(
+            ColorTheme.ParseHex(settings.BgColor),
+            ColorTheme.ParseHex(settings.AccentColor)).Apply();
 
         base.OnStartup(e);
         var window = new MainWindow();

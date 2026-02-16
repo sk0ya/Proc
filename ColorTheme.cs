@@ -72,6 +72,100 @@ public record ColorTheme
     public static ColorTheme GetByName(string name) =>
         All.FirstOrDefault(t => t.Name == name) ?? DarkOrange;
 
+    public static ColorTheme FromColors(Color bg, Color accent)
+    {
+        // Determine dark vs light based on relative luminance
+        double lum = 0.2126 * bg.R / 255.0 + 0.7152 * bg.G / 255.0 + 0.0722 * bg.B / 255.0;
+        bool isDark = lum < 0.5;
+
+        if (isDark)
+        {
+            return new ColorTheme
+            {
+                Name = "Custom", DisplayName = "Custom",
+                Bg = bg,
+                BgTransparent = Color.FromArgb(0xE0, bg.R, bg.G, bg.B),
+                Surface = Lighten(bg, 0.04),
+                SurfaceAlt = Lighten(bg, 0.07),
+                Border = Lighten(bg, 0.12),
+                Accent = accent,
+                Text = Color.FromRgb(0xD0, 0xD0, 0xD0),
+                SubText = Color.FromRgb(0xA0, 0xA0, 0xA0),
+                DimText = Color.FromRgb(0x70, 0x70, 0x70),
+                ActiveTime = Color.FromRgb(0x80, 0xFF, 0x80),
+                ActiveAccent = accent,
+                Hover = Lighten(bg, 0.15),
+                Pressed = Lighten(bg, 0.22),
+                CheckBg = Lighten(bg, 0.10),
+                CheckBorder = Lighten(bg, 0.22),
+                InactiveText = Color.FromRgb(0x60, 0x60, 0x60),
+                BlackedOutText = Color.FromRgb(0x50, 0x50, 0x50),
+            };
+        }
+        else
+        {
+            return new ColorTheme
+            {
+                Name = "Custom", DisplayName = "Custom",
+                Bg = bg,
+                BgTransparent = Color.FromArgb(0xE8, bg.R, bg.G, bg.B),
+                Surface = Color.FromRgb(0xFF, 0xFF, 0xFF),
+                SurfaceAlt = Darken(bg, 0.04),
+                Border = Darken(bg, 0.12),
+                Accent = accent,
+                Text = Color.FromRgb(0x1E, 0x1E, 0x1E),
+                SubText = Color.FromRgb(0x60, 0x60, 0x60),
+                DimText = Color.FromRgb(0x90, 0x90, 0x90),
+                ActiveTime = Color.FromRgb(0x00, 0x88, 0x00),
+                ActiveAccent = accent,
+                Hover = Darken(bg, 0.06),
+                Pressed = Darken(bg, 0.12),
+                CheckBg = Color.FromRgb(0xFF, 0xFF, 0xFF),
+                CheckBorder = Color.FromRgb(0xAA, 0xAA, 0xAA),
+                InactiveText = Color.FromRgb(0xA0, 0xA0, 0xA0),
+                BlackedOutText = Color.FromRgb(0xC0, 0xC0, 0xC0),
+            };
+        }
+    }
+
+    public static Color ParseHex(string hex)
+    {
+        hex = hex.TrimStart('#');
+        if (hex.Length == 6 &&
+            byte.TryParse(hex[..2], System.Globalization.NumberStyles.HexNumber, null, out byte r) &&
+            byte.TryParse(hex[2..4], System.Globalization.NumberStyles.HexNumber, null, out byte g) &&
+            byte.TryParse(hex[4..6], System.Globalization.NumberStyles.HexNumber, null, out byte b))
+        {
+            return Color.FromRgb(r, g, b);
+        }
+        return Color.FromRgb(0x1E, 0x1E, 0x1E); // fallback
+    }
+
+    public static string ToHex(Color c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+
+    public static bool IsValidHex(string hex)
+    {
+        hex = hex.TrimStart('#');
+        return hex.Length == 6 &&
+               byte.TryParse(hex[..2], System.Globalization.NumberStyles.HexNumber, null, out _) &&
+               byte.TryParse(hex[2..4], System.Globalization.NumberStyles.HexNumber, null, out _) &&
+               byte.TryParse(hex[4..6], System.Globalization.NumberStyles.HexNumber, null, out _);
+    }
+
+    private static byte ClampByte(int v) => (byte)Math.Clamp(v, 0, 255);
+
+    private static Color Lighten(Color c, double amount)
+    {
+        int delta = (int)(255 * amount);
+        return Color.FromRgb(ClampByte(c.R + delta), ClampByte(c.G + delta), ClampByte(c.B + delta));
+    }
+
+    private static Color Darken(Color c, double amount)
+    {
+        int delta = (int)(255 * amount);
+        return Color.FromRgb(ClampByte(c.R - delta), ClampByte(c.G - delta), ClampByte(c.B - delta));
+    }
+
     // ─── Dark themes ───
 
     public static ColorTheme DarkOrange { get; } = new()
