@@ -196,4 +196,9 @@ public partial class SettingsWindow : Window
         if (e.Key == Key.Escape)
             Close();
     }
+
+    private void Window_Deactivated(object? sender, EventArgs e)
+    {
+        Close();
+    }
 }

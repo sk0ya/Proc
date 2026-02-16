@@ -3,11 +3,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Proc - Settings"
         Width="340" Height="560"
+        WindowStyle="None"
+        AllowsTransparency="True"
         ResizeMode="NoResize"
         Background="{DynamicResource ThemeBg}"
         WindowStartupLocation="CenterScreen"
         Icon="/Proc.ico"
-        KeyDown="Window_KeyDown">
+        KeyDown="Window_KeyDown"
+        Deactivated="Window_Deactivated">
 
     <Grid Margin="20,16">
         <Grid.RowDefinitions>
