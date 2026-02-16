@@ -7,17 +7,14 @@ namespace Proc;
 public static class ImportHelper
 {
     /// <summary>
-    /// Imports records from an external CSV (tab-separated) and merges into Proc's daily log files.
+    /// Imports records from an external quoted CSV and merges into Proc's daily log files.
+    /// Expected columns: Name, Start, End, Duration, Process
     /// Existing Proc records take priority on duplicate timestamps.
     /// </summary>
     public static int Import(string importFilePath, string logDir)
     {
         var lines = File.ReadAllLines(importFilePath, Encoding.UTF8);
         if (lines.Length < 2) return 0;
-
-        // Detect delimiter from header
-        var header = lines[0];
-        var delimiter = header.Contains('\t') ? '\t' : ',';
 
         // Parse imported records, expanding duration into per-minute entries
         var importedByDate = new Dictionary<DateTime, List<ActivityRecord>>();
@@ -26,8 +23,8 @@ public static class ImportHelper
             var line = lines[i];
             if (string.IsNullOrWhiteSpace(line)) continue;
 
-            var parts = line.Split(delimiter);
-            if (parts.Length < 5) continue;
+            var parts = ParseCsvLine(line);
+            if (parts.Count < 5) continue;
 
             var windowTitle = parts[0].Trim();
             if (!TryParseDateTime(parts[1].Trim(), out var start)) continue;
@@ -36,10 +33,9 @@ public static class ImportHelper
 
             if (string.IsNullOrEmpty(processName)) continue;
 
-            // Generate one record per minute from start to end (exclusive)
+            // Generate one record per minute from start to end
             var current = new DateTime(start.Year, start.Month, start.Day, start.Hour, start.Minute, 0);
             var endMinute = new DateTime(end.Year, end.Month, end.Day, end.Hour, end.Minute, 0);
-            if (current == endMinute) endMinute = current; // at least one record
 
             do
             {
@@ -63,14 +59,13 @@ public static class ImportHelper
             var existingLines = new List<string>();
             if (File.Exists(filePath))
             {
-                foreach (var line in File.ReadAllLines(filePath, Encoding.UTF8))
+                foreach (var eline in File.ReadAllLines(filePath, Encoding.UTF8))
                 {
-                    if (string.IsNullOrWhiteSpace(line)) continue;
-                    existingLines.Add(line);
-                    // Extract timestamp (first field) for dedup
-                    var comma = line.IndexOf(',');
+                    if (string.IsNullOrWhiteSpace(eline)) continue;
+                    existingLines.Add(eline);
+                    var comma = eline.IndexOf(',');
                     if (comma > 0)
-                        existingTimestamps.Add(line[..comma]);
+                        existingTimestamps.Add(eline[..comma]);
                 }
             }
 
@@ -98,14 +93,61 @@ public static class ImportHelper
         return totalImported;
     }
 
+    private static List<string> ParseCsvLine(string line)
+    {
+        var result = new List<string>();
+        bool inQuote = false;
+        var current = new StringBuilder();
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+            if (inQuote)
+            {
+                if (c == '"')
+                {
+                    if (i + 1 < line.Length && line[i + 1] == '"')
+                    {
+                        current.Append('"');
+                        i++;
+                    }
+                    else
+                    {
+                        inQuote = false;
+                    }
+                }
+                else
+                {
+                    current.Append(c);
+                }
+            }
+            else
+            {
+                if (c == '"') inQuote = true;
+                else if (c == ',')
+                {
+                    result.Add(current.ToString());
+                    current.Clear();
+                }
+                else current.Append(c);
+            }
+        }
+        result.Add(current.ToString());
+        return result;
+    }
+
     private static bool TryParseDateTime(string s, out DateTime result)
     {
-        // Handle formats like "2022/10/20 11:12" or "2022-10-20 11:12"
         string[] formats = [
+            "yyyy/MM/dd HH:mm:ss",
+            "yyyy/MM/dd H:mm:ss",
             "yyyy/MM/dd HH:mm",
             "yyyy/MM/dd H:mm",
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd H:mm:ss",
             "yyyy-MM-dd HH:mm",
             "yyyy-MM-dd H:mm",
+            "yyyy/M/d HH:mm:ss",
+            "yyyy/M/d H:mm:ss",
             "yyyy/M/d HH:mm",
             "yyyy/M/d H:mm",
         ];
