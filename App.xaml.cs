@@ -41,6 +41,17 @@ public partial class App : System.Windows.Application
 
         KillOtherInstances();
 
+        // Check for updates before showing UI
+        try
+        {
+            if (AutoUpdater.CheckAndUpdate().GetAwaiter().GetResult())
+            {
+                Shutdown();
+                return;
+            }
+        }
+        catch { }
+
         // Apply saved theme from custom colors
         ColorTheme.FromColors(
             ColorTheme.ParseHex(settings.BgColor),
@@ -49,6 +60,9 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         var window = new MainWindow();
         window.Show();
+
+        // Check for updates every 1 hour while running
+        AutoUpdater.StartPeriodicCheck(TimeSpan.FromHours(12));
     }
 
     public static bool IsRunningAsAdmin()
