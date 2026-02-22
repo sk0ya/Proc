@@ -44,13 +44,14 @@
                 </ContextMenu>
             </tb:TaskbarIcon.ContextMenu>
         </tb:TaskbarIcon>
-        <TextBlock x:Name="TotalTimeText"
-                   Grid.Row="0"
-                   Text="Total: 0m"
+        <TextBlock Grid.Row="0"
                    Foreground="{DynamicResource ThemeSubText}"
                    FontFamily="Consolas"
                    FontSize="11"
-                   Margin="6,4,6,1"/>
+                   Margin="6,4,6,1">
+            <Run Text="Total: "/>
+            <Run x:Name="TotalTimeValueText" Text="0m" Foreground="{DynamicResource ThemeAccent}" FontSize="13"/>
+        </TextBlock>
         <ItemsControl x:Name="ActivityList" Grid.Row="1" Padding="4,0,4,2">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
