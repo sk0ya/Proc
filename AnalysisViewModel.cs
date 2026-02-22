@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -28,6 +29,7 @@ public class AnalysisViewModel : INotifyPropertyChanged
     private bool _hasDetail;
 
     private List<(DateTime Date, ActivityRecord Record)>? _currentRecords;
+    private int _iconLoadVersion;
 
     public AnalysisViewModel(string logDirectory)
     {
@@ -206,8 +208,9 @@ public class AnalysisViewModel : INotifyPropertyChanged
             s.ProcessName == firstApp
         )).ToList();
 
-        // Load icons asynchronously
-        LoadIconsAsync(summaries.Select(s => s.ProcessName).ToList());
+        // Load icons asynchronously.
+        int iconLoadVersion = System.Threading.Interlocked.Increment(ref _iconLoadVersion);
+        _ = LoadIconsAsync(summaries.Select(s => s.ProcessName).ToList(), iconLoadVersion);
 
         // Build timeline for day view
         if (_period == AnalysisPeriod.Day && _currentRecords.Count > 0)
@@ -228,29 +231,48 @@ public class AnalysisViewModel : INotifyPropertyChanged
         }
     }
 
-    private async void LoadIconsAsync(List<string> processNames)
+    private async Task LoadIconsAsync(List<string> processNames, int iconLoadVersion)
     {
-        var icons = await Task.Run(() =>
+        try
         {
-            var result = new Dictionary<string, ImageSource?>();
-            foreach (var name in processNames)
+            var icons = await Task.Run(() =>
             {
-                if (name == "Other") continue;
-                result[name] = IconHelper.GetIconByProcessName(name);
-            }
-            return result;
-        });
+                var result = new Dictionary<string, ImageSource?>();
+                foreach (var name in processNames)
+                {
+                    if (name == "Other") continue;
+                    try
+                    {
+                        result[name] = IconHelper.GetIconByProcessName(name);
+                    }
+                    catch
+                    {
+                        result[name] = null;
+                    }
+                }
+                return result;
+            }).ConfigureAwait(false);
 
-        // Update AppBars with resolved icons on UI thread
-        _dispatcher.Invoke(() =>
-        {
-            AppBars = _appBars.Select(b =>
+            if (_dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished)
+                return;
+
+            // Ignore stale icon results from older refresh calls.
+            _dispatcher.Invoke(() =>
             {
-                if (icons.TryGetValue(b.ProcessName, out var icon) && icon != null)
-                    return b with { Icon = icon };
-                return b;
-            }).ToList();
-        });
+                if (iconLoadVersion != _iconLoadVersion) return;
+
+                AppBars = _appBars.Select(b =>
+                {
+                    if (icons.TryGetValue(b.ProcessName, out var icon) && icon != null)
+                        return b with { Icon = icon };
+                    return b;
+                }).ToList();
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"LoadIconsAsync failed: {ex}");
+        }
     }
 
     private void RefreshDetail(string processName)

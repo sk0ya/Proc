@@ -12,14 +12,31 @@ public static class AutoUpdater
 {
     private const string RepoApiUrl = "https://api.github.com/repos/sk0ya/Proc/releases/latest";
     private static Timer? _timer;
+    private static readonly bool _isEnabled = DetectEnabled();
+
+    private static bool DetectEnabled()
+    {
+#if DEBUG
+        return false;
+#else
+        var path = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(path))
+            return false;
+
+        // Safety guard: never self-update binaries running from a Debug output path.
+        return path.IndexOf(@"\bin\Debug\", StringComparison.OrdinalIgnoreCase) < 0;
+#endif
+    }
 
     public static void StartPeriodicCheck(TimeSpan interval)
     {
+        if (!_isEnabled) return;
         _timer = new Timer(_ => _ = CheckAndPrompt(), null, interval, interval);
     }
 
     public static async Task<bool> CheckAndUpdate()
     {
+        if (!_isEnabled) return false;
         var result = await DownloadUpdate();
         if (result == null) return false;
         ApplyUpdate(result.Value.tempExe);
@@ -28,6 +45,7 @@ public static class AutoUpdater
 
     private static async Task CheckAndPrompt()
     {
+        if (!_isEnabled) return;
         var result = await DownloadUpdate();
         if (result == null) return;
 
@@ -40,6 +58,7 @@ public static class AutoUpdater
 
     private static void ApplyUpdate(string tempExe)
     {
+        if (!_isEnabled) return;
         var currentExe = Environment.ProcessPath;
         if (string.IsNullOrEmpty(currentExe)) return;
 

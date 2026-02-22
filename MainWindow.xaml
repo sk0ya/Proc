@@ -25,6 +25,10 @@
         </ContextMenu>
     </Window.ContextMenu>
     <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
         <tb:TaskbarIcon x:Name="TrayIcon" ToolTipText="Proc" IconSource="/Proc.ico"
                         TrayLeftMouseDown="TrayIcon_LeftClick">
             <tb:TaskbarIcon.ContextMenu>
@@ -40,7 +44,14 @@
                 </ContextMenu>
             </tb:TaskbarIcon.ContextMenu>
         </tb:TaskbarIcon>
-        <ItemsControl x:Name="ActivityList" Padding="4,2">
+        <TextBlock x:Name="TotalTimeText"
+                   Grid.Row="0"
+                   Text="Total: 0m"
+                   Foreground="{DynamicResource ThemeSubText}"
+                   FontFamily="Consolas"
+                   FontSize="11"
+                   Margin="6,4,6,1"/>
+        <ItemsControl x:Name="ActivityList" Grid.Row="1" Padding="4,0,4,2">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
                     <StackPanel Orientation="Horizontal" x:Name="RowPanel">

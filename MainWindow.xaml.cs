@@ -66,6 +66,7 @@ public partial class MainWindow : Window
     private void RefreshList()
     {
         var records = _logger.GetTodayRecords();
+        TotalTimeText.Text = $"Total: {LogAnalyzer.FormatTime(records.Count)}";
         var titleVis = _showTitle ? Visibility.Visible : Visibility.Collapsed;
         var activeProc = _logger.CurrentProcessName;
         var activeTitle = _logger.CurrentWindowTitle;
@@ -191,5 +192,5 @@ public partial class MainWindow : Window
 
 public record ActivityRow(int Minutes, string Process, string Title, Visibility TitleVisibility, bool IsActive, ImageSource? Icon)
 {
-    public string TimeDisplay => Minutes >= 60 ? $"{Minutes / 60}h {Minutes % 60:D2}m" : $"{Minutes}m";
+    public string TimeDisplay => LogAnalyzer.FormatTime(Minutes);
 }

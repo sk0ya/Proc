@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -33,7 +34,7 @@ public static class IconHelper
     private const uint SHGFI_ICON = 0x100;
     private const uint SHGFI_SMALLICON = 0x1;
 
-    private static readonly Dictionary<string, ImageSource?> _iconCache = new();
+    private static readonly ConcurrentDictionary<string, ImageSource?> _iconCache = new();
     private static readonly Dictionary<string, string> _exePathCache = new();
     private static readonly string _cacheFilePath;
     private static readonly object _lock = new();
@@ -137,18 +138,22 @@ public static class IconHelper
         if (_iconCache.TryGetValue(exePath, out var cached)) return cached;
 
         ImageSource? result = null;
+        var shfi = new SHFILEINFO();
         try
         {
-            var shfi = new SHFILEINFO();
             var hr = SHGetFileInfo(exePath, 0, ref shfi, (uint)Marshal.SizeOf(shfi), SHGFI_ICON | SHGFI_SMALLICON);
             if (hr != IntPtr.Zero && shfi.hIcon != IntPtr.Zero)
             {
                 result = Imaging.CreateBitmapSourceFromHIcon(shfi.hIcon, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
                 result.Freeze();
-                DestroyIcon(shfi.hIcon);
             }
         }
         catch { }
+        finally
+        {
+            if (shfi.hIcon != IntPtr.Zero)
+                DestroyIcon(shfi.hIcon);
+        }
 
         _iconCache[exePath] = result;
         return result;
