@@ -65,7 +65,7 @@ public partial class MainWindow : Window
 
     private void RefreshList()
     {
-        var records = _logger.GetTodayRecords();
+        var records = _logger.GetTodayRecords().Where(r => !r.IsIdle).ToList();
         TotalTimeValueText.Text = LogAnalyzer.FormatTime(records.Count);
         var titleVis = _showTitle ? Visibility.Visible : Visibility.Collapsed;
         var activeProc = _logger.CurrentProcessName;

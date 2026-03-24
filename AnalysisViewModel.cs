@@ -27,6 +27,7 @@ public class AnalysisViewModel : INotifyPropertyChanged
     private string _detailHeader = "";
     private bool _hasData;
     private bool _hasDetail;
+    private bool _showIdle = false;
 
     private List<(DateTime Date, ActivityRecord Record)>? _currentRecords;
     private int _iconLoadVersion;
@@ -104,6 +105,12 @@ public class AnalysisViewModel : INotifyPropertyChanged
         private set { _hasDetail = value; OnPropertyChanged(nameof(HasDetail)); }
     }
 
+    public bool ShowIdle
+    {
+        get => _showIdle;
+        set { if (_showIdle != value) { _showIdle = value; OnPropertyChanged(nameof(ShowIdle)); Refresh(); } }
+    }
+
     public List<TimelineBlock> TimelineBlocks
     {
         get => _timelineBlocks;
@@ -176,10 +183,10 @@ public class AnalysisViewModel : INotifyPropertyChanged
     {
         var (start, end) = LogAnalyzer.GetDateRange(_referenceDate, _period);
         _currentRecords = LogAnalyzer.ReadRecords(_logDirectory, start, end);
-        var summaries = LogAnalyzer.Aggregate(_currentRecords);
+        var summaries = LogAnalyzer.Aggregate(_currentRecords, includeIdle: _showIdle);
 
         PeriodLabel = LogAnalyzer.GetPeriodLabel(_referenceDate, _period);
-        int totalMinutes = _currentRecords.Count;
+        int totalMinutes = summaries.Sum(s => s.TotalMinutes);
         TotalTimeText = $"Total: {LogAnalyzer.FormatTime(totalMinutes)}";
         TopAppText = summaries.Count > 0 ? $"Top: {summaries[0].ProcessName}" : "No data";
         HasData = summaries.Count > 0;
@@ -214,7 +221,7 @@ public class AnalysisViewModel : INotifyPropertyChanged
 
         // Build timeline for day view
         if (_period == AnalysisPeriod.Day && _currentRecords.Count > 0)
-            TimelineBlocks = LogAnalyzer.BuildTimeline(_currentRecords);
+            TimelineBlocks = LogAnalyzer.BuildTimeline(_currentRecords, _showIdle);
         else
             TimelineBlocks = [];
 
@@ -284,7 +291,7 @@ public class AnalysisViewModel : INotifyPropertyChanged
         }
 
         var items = new List<DetailItem>();
-        var summary = LogAnalyzer.Aggregate(_currentRecords).FirstOrDefault(s => s.ProcessName == processName);
+        var summary = LogAnalyzer.Aggregate(_currentRecords, includeIdle: _showIdle).FirstOrDefault(s => s.ProcessName == processName);
 
         if (summary != null)
         {
@@ -324,10 +331,11 @@ public class AnalysisViewModel : INotifyPropertyChanged
         }
 
         var items = new List<DetailItem>();
-        DetailHeader = $"All Apps - {LogAnalyzer.FormatTime(_currentRecords.Count)}";
+        var summaries = LogAnalyzer.Aggregate(_currentRecords, int.MaxValue, _showIdle);
+        int allTotal = summaries.Sum(s => s.TotalMinutes);
+        DetailHeader = $"All Apps - {LogAnalyzer.FormatTime(allTotal)}";
 
         // All window titles across all apps, grouped by process then title
-        var summaries = LogAnalyzer.Aggregate(_currentRecords, int.MaxValue);
         foreach (var summary in summaries)
         {
             items.Add(new DetailItem($"{summary.ProcessName} ({LogAnalyzer.FormatTime(summary.TotalMinutes)})", "", true));

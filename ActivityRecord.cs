@@ -1,17 +1,19 @@
 namespace Proc;
 
-public record ActivityRecord(DateTime Timestamp, string ProcessName, string WindowTitle)
+public record ActivityRecord(DateTime Timestamp, string ProcessName, string WindowTitle, bool IsIdle = false)
 {
-    public string ToCsvLine() => $"{Timestamp:HH:mm:ss},{Escape(ProcessName)},{Escape(WindowTitle)}";
+    public string ToCsvLine() => $"{Timestamp:HH:mm:ss},{Escape(ProcessName)},{Escape(WindowTitle)},{(IsIdle ? "idle" : "")}";
 
     public static ActivityRecord FromCsvLine(string line)
     {
         var parts = ParseCsvLine(line);
         if (parts.Count < 3) throw new FormatException("Invalid CSV line");
+        bool isIdle = parts.Count >= 4 && parts[3] == "idle";
         return new ActivityRecord(
             DateTime.Parse(parts[0]),
             parts[1],
-            parts[2]);
+            parts[2],
+            isIdle);
     }
 
     private static string Escape(string s)

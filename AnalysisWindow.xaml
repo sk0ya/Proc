@@ -249,6 +249,11 @@
                 <!-- Summary stats (right) -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal"
                             HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <CheckBox IsChecked="{Binding ShowIdle}" Content="Idle"
+                              Foreground="{DynamicResource ThemeSubText}"
+                              FontFamily="Consolas" FontSize="12"
+                              VerticalAlignment="Center" Margin="0,0,12,0"
+                              Cursor="Hand"/>
                     <TextBlock Text="{Binding TotalTimeText}" Style="{StaticResource ValueText}"
                                Margin="12,0"/>
                     <TextBlock Text="{Binding TopAppText}" Style="{StaticResource LabelText}"/>

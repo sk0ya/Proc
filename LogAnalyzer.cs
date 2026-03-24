@@ -68,10 +68,12 @@ public static class LogAnalyzer
     }
 
     public static List<AppUsageSummary> Aggregate(
-        List<(DateTime Date, ActivityRecord Record)> records, int topN = 15)
+        List<(DateTime Date, ActivityRecord Record)> records, int topN = 15, bool includeIdle = false)
     {
-        int totalRecords = records.Count;
+        var filtered = includeIdle ? records : records.Where(r => !r.Record.IsIdle).ToList();
+        int totalRecords = filtered.Count;
         if (totalRecords == 0) return [];
+        records = filtered;
 
         var groups = records
             .GroupBy(r => r.Record.ProcessName)
@@ -145,8 +147,10 @@ public static class LogAnalyzer
     }
 
     public static List<TimelineBlock> BuildTimeline(
-        List<(DateTime Date, ActivityRecord Record)> records)
+        List<(DateTime Date, ActivityRecord Record)> records, bool includeIdle = false)
     {
+        if (!includeIdle)
+            records = records.Where(r => !r.Record.IsIdle).ToList();
         if (records.Count == 0) return [];
 
         var sorted = records
