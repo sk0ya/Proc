@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32;
 
 namespace Proc;
 
@@ -53,6 +54,7 @@ public class ActivityLogger : IDisposable
     public string? CurrentProcessName { get; private set; }
     public string? CurrentWindowTitle { get; private set; }
 
+    private volatile bool _isSessionLocked;
     private readonly Dictionary<string, string> _exePaths = new();
 
     public ActivityLogger()
@@ -63,6 +65,7 @@ public class ActivityLogger : IDisposable
         // Keep a reference to prevent GC collection of the delegate
         _winEventProc = OnForegroundChanged;
 
+        SystemEvents.SessionSwitch += OnSessionSwitch;
         _timer = new System.Threading.Timer(OnTick, null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
     }
 
@@ -107,10 +110,18 @@ public class ActivityLogger : IDisposable
         return TimeSpan.FromMilliseconds((uint)Environment.TickCount - info.dwTime);
     }
 
+    private void OnSessionSwitch(object sender, SessionSwitchEventArgs e)
+    {
+        _isSessionLocked = e.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.ConsoleDisconnect;
+    }
+
     private void OnTick(object? state)
     {
         try
         {
+            // セッションがロック中は完全未使用とみなしてスキップ
+            if (_isSessionLocked) return;
+
             bool isIdle = GetIdleTime().TotalSeconds >= 60;
 
             var record = CaptureActiveWindow(isIdle);
@@ -192,6 +203,7 @@ public class ActivityLogger : IDisposable
 
     public void Dispose()
     {
+        SystemEvents.SessionSwitch -= OnSessionSwitch;
         _timer.Dispose();
         if (_winEventHook != IntPtr.Zero)
         {
