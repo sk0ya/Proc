@@ -119,18 +119,13 @@ public class ActivityLogger : IDisposable
     {
         try
         {
-            // セッションがロック中は完全未使用とみなしてスキップ
             if (_isSessionLocked) return;
+            if (GetIdleTime().TotalMinutes >= 5) return;
 
-            bool isIdle = GetIdleTime().TotalSeconds >= 60;
-
-            var record = CaptureActiveWindow(isIdle);
+            var record = CaptureActiveWindow();
             if (record == null) return;
-            if (!isIdle)
-            {
-                CurrentProcessName = record.ProcessName;
-                CurrentWindowTitle = record.WindowTitle;
-            }
+            CurrentProcessName = record.ProcessName;
+            CurrentWindowTitle = record.WindowTitle;
             var filePath = GetLogFilePath(DateTime.Today);
             File.AppendAllText(filePath, record.ToCsvLine() + Environment.NewLine, Encoding.UTF8);
             OnRecorded?.Invoke();
@@ -141,7 +136,7 @@ public class ActivityLogger : IDisposable
         }
     }
 
-    private ActivityRecord? CaptureActiveWindow(bool isIdle = false)
+    private ActivityRecord? CaptureActiveWindow()
     {
         var hwnd = GetForegroundWindow();
         if (hwnd == IntPtr.Zero) return null;
@@ -171,7 +166,7 @@ public class ActivityLogger : IDisposable
             processName = "(unknown)";
         }
 
-        return new ActivityRecord(DateTime.Now, processName, title, isIdle);
+        return new ActivityRecord(DateTime.Now, processName, title);
     }
 
     public List<ActivityRecord> GetTodayRecords()

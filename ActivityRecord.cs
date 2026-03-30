@@ -2,7 +2,9 @@ namespace Proc;
 
 public record ActivityRecord(DateTime Timestamp, string ProcessName, string WindowTitle, bool IsIdle = false)
 {
-    public string ToCsvLine() => $"{Timestamp:HH:mm:ss},{Escape(ProcessName)},{Escape(WindowTitle)},{(IsIdle ? "idle" : "")}";
+    public string ToCsvLine() => IsIdle
+        ? $"{Timestamp:HH:mm:ss},{Escape(ProcessName)},{Escape(WindowTitle)},idle"
+        : $"{Timestamp:HH:mm:ss},{Escape(ProcessName)},{Escape(WindowTitle)}";
 
     public static ActivityRecord FromCsvLine(string line)
     {
