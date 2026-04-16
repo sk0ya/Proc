@@ -16,6 +16,7 @@ public partial class SettingsWindow : Window
     private bool _suppressHexEvent;
 
     public event Action<bool>? ShowTitleChanged;
+    public event Action<bool>? ShowWhenIdleChanged;
 
     // Background swatch colors
     private static readonly string[] BgColors =
@@ -49,17 +50,19 @@ public partial class SettingsWindow : Window
         "#C9B840", "#D9A830",
     ];
 
-    public SettingsWindow(bool showTitle)
+    public SettingsWindow(bool showTitle, bool showWhenIdle)
     {
         InitializeComponent();
+        var settings = AppSettings.Load();
+
         StartupCheckBox.IsChecked = IsStartupEnabled();
         ShowTitleCheckBox.IsChecked = showTitle;
-        RunAsAdminCheckBox.IsChecked = AppSettings.Load().RunAsAdmin;
+        ShowWhenIdleCheckBox.IsChecked = showWhenIdle;
+        RunAsAdminCheckBox.IsChecked = settings.RunAsAdmin;
 
         BuildSwatches(BgSwatches, BgColors, BgSwatch_Click);
         BuildSwatches(AccentSwatches, AccentColors, AccentSwatch_Click);
 
-        var settings = AppSettings.Load();
         _suppressHexEvent = true;
         BgHexBox.Text = settings.BgColor;
         AccentHexBox.Text = settings.AccentColor;
@@ -180,6 +183,11 @@ public partial class SettingsWindow : Window
     private void ShowTitleCheckBox_Changed(object sender, RoutedEventArgs e)
     {
         ShowTitleChanged?.Invoke(ShowTitleCheckBox.IsChecked == true);
+    }
+
+    private void ShowWhenIdleCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        ShowWhenIdleChanged?.Invoke(ShowWhenIdleCheckBox.IsChecked == true);
     }
 
     private void RunAsAdminCheckBox_Changed(object sender, RoutedEventArgs e)

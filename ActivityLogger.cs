@@ -8,7 +8,8 @@ namespace Proc;
 
 public class ActivityLogger : IDisposable
 {
-    private readonly System.Threading.Timer _timer;
+    private readonly System.Threading.Timer _logTimer;
+    private readonly System.Threading.Timer _idleTimer;
     private readonly string _logDir;
     public string LogDirectory => _logDir;
     private IntPtr _winEventHook;
@@ -48,11 +49,16 @@ public class ActivityLogger : IDisposable
 
     private const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
     private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+    private static readonly TimeSpan ShowIdleThreshold = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan LoggingIdleThreshold = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan IdleCheckInterval = TimeSpan.FromSeconds(1);
 
     public event Action? OnRecorded;
     public event Action? OnActiveChanged;
+    public event Action<bool>? OnIdleChanged;
     public string? CurrentProcessName { get; private set; }
     public string? CurrentWindowTitle { get; private set; }
+    public bool IsIdle { get; private set; }
 
     private volatile bool _isSessionLocked;
     private readonly Dictionary<string, string> _exePaths = new();
@@ -66,7 +72,8 @@ public class ActivityLogger : IDisposable
         _winEventProc = OnForegroundChanged;
 
         SystemEvents.SessionSwitch += OnSessionSwitch;
-        _timer = new System.Threading.Timer(OnTick, null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
+        _logTimer = new System.Threading.Timer(OnTick, null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
+        _idleTimer = new System.Threading.Timer(OnIdleCheck, null, TimeSpan.Zero, IdleCheckInterval);
     }
 
     public void StartForegroundHook()
@@ -84,6 +91,7 @@ public class ActivityLogger : IDisposable
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
     {
         UpdateCurrentWindow();
+        UpdateIdleState();
         OnActiveChanged?.Invoke();
     }
 
@@ -113,14 +121,52 @@ public class ActivityLogger : IDisposable
     private void OnSessionSwitch(object sender, SessionSwitchEventArgs e)
     {
         _isSessionLocked = e.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.ConsoleDisconnect;
+        if (_isSessionLocked)
+            SetIdleState(false);
+    }
+
+    private void UpdateIdleState()
+    {
+        UpdateIdleState(GetIdleTime());
+    }
+
+    private void UpdateIdleState(TimeSpan idleTime)
+    {
+        SetIdleState(!_isSessionLocked && idleTime >= ShowIdleThreshold);
+    }
+
+    private void SetIdleState(bool isIdle)
+    {
+        if (IsIdle == isIdle) return;
+        IsIdle = isIdle;
+        OnIdleChanged?.Invoke(isIdle);
+    }
+
+    private void OnIdleCheck(object? state)
+    {
+        try
+        {
+            UpdateIdleState();
+        }
+        catch
+        {
+            // ignore idle detection errors
+        }
     }
 
     private void OnTick(object? state)
     {
         try
         {
-            if (_isSessionLocked) return;
-            if (GetIdleTime().TotalMinutes >= 5) return;
+            if (_isSessionLocked)
+            {
+                SetIdleState(false);
+                return;
+            }
+
+            var idleTime = GetIdleTime();
+            UpdateIdleState(idleTime);
+            if (idleTime >= LoggingIdleThreshold) return;
 
             var record = CaptureActiveWindow();
             if (record == null) return;
@@ -199,7 +245,8 @@ public class ActivityLogger : IDisposable
     public void Dispose()
     {
         SystemEvents.SessionSwitch -= OnSessionSwitch;
-        _timer.Dispose();
+        _logTimer.Dispose();
+        _idleTimer.Dispose();
         if (_winEventHook != IntPtr.Zero)
         {
             UnhookWinEvent(_winEventHook);

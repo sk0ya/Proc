@@ -6,6 +6,7 @@
         AllowsTransparency="True"
         Background="{DynamicResource ThemeBgTransparent}"
         Topmost="True"
+        ShowActivated="False"
         ShowInTaskbar="False"
         SizeToContent="WidthAndHeight"
         ResizeMode="NoResize"

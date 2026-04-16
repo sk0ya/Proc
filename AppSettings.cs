@@ -10,6 +10,7 @@ public class AppSettings
         "Proc", "settings.json");
 
     public bool ShowTitle { get; set; } = true;
+    public bool ShowWhenIdle { get; set; } = false;
     public bool RunAsAdmin { get; set; } = false;
     public double? WindowLeft { get; set; }
     public double? WindowTop { get; set; }

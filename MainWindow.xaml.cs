@@ -10,6 +10,8 @@ public partial class MainWindow : Window
     private readonly ActivityLogger _logger;
     private readonly AppSettings _settings;
     private bool _showTitle;
+    private bool _showWhenIdle;
+    private bool _autoShownForIdle;
     private AnalysisWindow? _analysisWindow;
     private SettingsWindow? _settingsWindow;
 
@@ -19,6 +21,7 @@ public partial class MainWindow : Window
 
         _settings = AppSettings.Load();
         _showTitle = _settings.ShowTitle;
+        _showWhenIdle = _settings.ShowWhenIdle;
         ToggleTitleMenu.IsChecked = _showTitle;
 
         _logger = new ActivityLogger();
@@ -29,10 +32,12 @@ public partial class MainWindow : Window
                 _analysisWindow.Refresh();
         });
         _logger.OnActiveChanged += () => Dispatcher.Invoke(RefreshList);
+        _logger.OnIdleChanged += isIdle => Dispatcher.Invoke(() => ApplyIdleVisibility(isIdle));
 
         Loaded += (_, _) =>
         {
             _logger.StartForegroundHook();
+            ApplyIdleVisibility(_logger.IsIdle);
 
             if (_settings.WindowLeft.HasValue && _settings.WindowTop.HasValue)
             {
@@ -59,6 +64,7 @@ public partial class MainWindow : Window
 
     private void ToggleVisibility()
     {
+        _autoShownForIdle = false;
         if (IsVisible) Hide();
         else { Show(); Activate(); }
     }
@@ -104,6 +110,43 @@ public partial class MainWindow : Window
         RefreshList();
     }
 
+    private void SetShowWhenIdle(bool value)
+    {
+        _showWhenIdle = value;
+        _settings.ShowWhenIdle = value;
+        _settings.Save();
+
+        if (!value && _autoShownForIdle)
+        {
+            _autoShownForIdle = false;
+            Hide();
+            return;
+        }
+
+        ApplyIdleVisibility(_logger.IsIdle);
+    }
+
+    private void ApplyIdleVisibility(bool isIdle)
+    {
+        if (!_showWhenIdle) return;
+
+        if (isIdle)
+        {
+            if (!IsVisible)
+            {
+                _autoShownForIdle = true;
+                Show();
+            }
+            return;
+        }
+
+        if (_autoShownForIdle)
+        {
+            _autoShownForIdle = false;
+            Hide();
+        }
+    }
+
     private void ToggleTitle_Click(object sender, RoutedEventArgs e)
     {
         SetShowTitle(ToggleTitleMenu.IsChecked);
@@ -134,8 +177,9 @@ public partial class MainWindow : Window
     {
         if (_settingsWindow == null || !_settingsWindow.IsLoaded)
         {
-            _settingsWindow = new SettingsWindow(_showTitle);
+            _settingsWindow = new SettingsWindow(_showTitle, _showWhenIdle);
             _settingsWindow.ShowTitleChanged += SetShowTitle;
+            _settingsWindow.ShowWhenIdleChanged += SetShowWhenIdle;
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         }
         _settingsWindow.Show();
