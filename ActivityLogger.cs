@@ -59,7 +59,6 @@ public class ActivityLogger : IDisposable
     public string? CurrentProcessName { get; private set; }
     public string? CurrentWindowTitle { get; private set; }
     public bool IsIdle { get; private set; }
-    public TimeSpan InputIdleTime => GetIdleTime();
 
     private volatile bool _isSessionLocked;
     private readonly Dictionary<string, string> _exePaths = new();

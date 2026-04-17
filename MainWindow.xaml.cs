@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     private bool _showTitle;
     private bool _showWhenIdle;
     private bool _autoShownForIdle;
+    private DateTime? _autoHideAfter;
     private AnalysisWindow? _analysisWindow;
     private SettingsWindow? _settingsWindow;
 
@@ -72,6 +73,7 @@ public partial class MainWindow : Window
     private void ToggleVisibility()
     {
         _autoShownForIdle = false;
+        _autoHideAfter = null;
         _autoHideTimer.Stop();
         if (IsVisible) Hide();
         else { Show(); Activate(); }
@@ -125,7 +127,10 @@ public partial class MainWindow : Window
         _settings.Save();
 
         if (!value)
+        {
+            _autoHideAfter = null;
             _autoHideTimer.Stop();
+        }
 
         if (!value && _autoShownForIdle)
         {
@@ -143,6 +148,7 @@ public partial class MainWindow : Window
 
         if (isIdle)
         {
+            _autoHideAfter = null;
             _autoHideTimer.Stop();
             if (!IsVisible)
             {
@@ -154,6 +160,7 @@ public partial class MainWindow : Window
 
         if (_autoShownForIdle)
         {
+            _autoHideAfter ??= DateTime.Now + PostInputVisibilityDuration;
             _autoHideTimer.Start();
             HideAutoShownIfReady();
         }
@@ -163,14 +170,20 @@ public partial class MainWindow : Window
     {
         if (!_autoShownForIdle)
         {
+            _autoHideAfter = null;
             _autoHideTimer.Stop();
             return;
         }
 
-        if (_logger.IsIdle || IsProcActive() || _logger.InputIdleTime < PostInputVisibilityDuration)
+        if (_logger.IsIdle || IsProcActive())
+            return;
+
+        _autoHideAfter ??= DateTime.Now + PostInputVisibilityDuration;
+        if (DateTime.Now < _autoHideAfter)
             return;
 
         _autoShownForIdle = false;
+        _autoHideAfter = null;
         _autoHideTimer.Stop();
         Hide();
     }
