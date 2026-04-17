@@ -169,10 +169,15 @@ public class ActivityLogger : IDisposable
             UpdateIdleState(idleTime);
             if (idleTime >= LoggingIdleThreshold) return;
 
-            var record = CaptureActiveWindow();
+            var record = idleTime >= ShowIdleThreshold
+                ? new ActivityRecord(DateTime.Now, "Idle", "", true)
+                : CaptureActiveWindow();
             if (record == null) return;
-            CurrentProcessName = record.ProcessName;
-            CurrentWindowTitle = record.WindowTitle;
+            if (!record.IsIdle)
+            {
+                CurrentProcessName = record.ProcessName;
+                CurrentWindowTitle = record.WindowTitle;
+            }
             var filePath = GetLogFilePath(DateTime.Today);
             File.AppendAllText(filePath, record.ToCsvLine() + Environment.NewLine, Encoding.UTF8);
             OnRecorded?.Invoke();
