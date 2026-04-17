@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -9,6 +10,12 @@ namespace Proc;
 public partial class MainWindow : Window
 {
     private static readonly TimeSpan PostInputVisibilityDuration = TimeSpan.FromSeconds(10);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
     private readonly ActivityLogger _logger;
     private readonly AppSettings _settings;
@@ -188,8 +195,14 @@ public partial class MainWindow : Window
         Hide();
     }
 
-    private static bool IsProcActive() =>
-        Application.Current.Windows.OfType<Window>().Any(window => window.IsActive);
+    private static bool IsProcActive()
+    {
+        var foregroundWindow = GetForegroundWindow();
+        if (foregroundWindow == IntPtr.Zero) return false;
+
+        GetWindowThreadProcessId(foregroundWindow, out var processId);
+        return processId == Environment.ProcessId;
+    }
 
     private void ToggleTitle_Click(object sender, RoutedEventArgs e)
     {
