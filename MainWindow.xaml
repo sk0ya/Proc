@@ -10,6 +10,9 @@
         ShowInTaskbar="False"
         SizeToContent="WidthAndHeight"
         ResizeMode="NoResize"
+        PreviewMouseDown="Window_UserInteracted"
+        PreviewMouseWheel="Window_UserInteracted"
+        PreviewKeyDown="Window_UserInteracted"
         MouseLeftButtonDown="Window_MouseLeftButtonDown"
         MouseDoubleClick="Window_MouseDoubleClick">
     <Window.ContextMenu>

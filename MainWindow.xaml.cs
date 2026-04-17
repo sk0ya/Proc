@@ -2,6 +2,7 @@ using Microsoft.Win32;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 
@@ -9,7 +10,7 @@ namespace Proc;
 
 public partial class MainWindow : Window
 {
-    private static readonly TimeSpan PostInputVisibilityDuration = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan PostInputVisibilityDuration = TimeSpan.FromSeconds(5);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
@@ -23,6 +24,7 @@ public partial class MainWindow : Window
     private bool _showTitle;
     private bool _showWhenIdle;
     private bool _autoShownForIdle;
+    private bool _autoShownWindowInteracted;
     private DateTime? _autoHideAfter;
     private AnalysisWindow? _analysisWindow;
     private SettingsWindow? _settingsWindow;
@@ -79,11 +81,26 @@ public partial class MainWindow : Window
 
     private void ToggleVisibility()
     {
-        _autoShownForIdle = false;
-        _autoHideAfter = null;
-        _autoHideTimer.Stop();
-        if (IsVisible) Hide();
-        else { Show(); Activate(); }
+        if (IsVisible)
+        {
+            _autoShownForIdle = false;
+            _autoShownWindowInteracted = false;
+            _autoHideAfter = null;
+            _autoHideTimer.Stop();
+            Hide();
+            return;
+        }
+
+        if (_showWhenIdle)
+        {
+            _autoShownForIdle = true;
+            _autoShownWindowInteracted = true;
+            _autoHideAfter = DateTime.Now + PostInputVisibilityDuration;
+            _autoHideTimer.Start();
+        }
+
+        Show();
+        Activate();
     }
 
     private void RefreshList()
@@ -142,6 +159,7 @@ public partial class MainWindow : Window
         if (!value && _autoShownForIdle)
         {
             _autoShownForIdle = false;
+            _autoShownWindowInteracted = false;
             Hide();
             return;
         }
@@ -156,12 +174,14 @@ public partial class MainWindow : Window
         if (isIdle)
         {
             _autoHideAfter = null;
-            _autoHideTimer.Stop();
             if (!IsVisible)
             {
                 _autoShownForIdle = true;
+                _autoShownWindowInteracted = false;
                 Show();
             }
+            if (_autoShownForIdle)
+                _autoHideTimer.Start();
             return;
         }
 
@@ -170,7 +190,11 @@ public partial class MainWindow : Window
             _autoHideAfter ??= DateTime.Now + PostInputVisibilityDuration;
             _autoHideTimer.Start();
             HideAutoShownIfReady();
+            return;
         }
+
+        if (IsVisible)
+            Hide();
     }
 
     private void HideAutoShownIfReady()
@@ -182,7 +206,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_logger.IsIdle || IsProcActive())
+        if (_logger.IsIdle)
+            return;
+
+        if (ShouldKeepVisibleForProcActivity())
             return;
 
         _autoHideAfter ??= DateTime.Now + PostInputVisibilityDuration;
@@ -190,15 +217,20 @@ public partial class MainWindow : Window
             return;
 
         _autoShownForIdle = false;
+        _autoShownWindowInteracted = false;
         _autoHideAfter = null;
         _autoHideTimer.Stop();
         Hide();
     }
 
-    private static bool IsProcActive()
+    private bool ShouldKeepVisibleForProcActivity()
     {
         var foregroundWindow = GetForegroundWindow();
         if (foregroundWindow == IntPtr.Zero) return false;
+
+        var mainWindow = new WindowInteropHelper(this).Handle;
+        if (foregroundWindow == mainWindow)
+            return _autoShownWindowInteracted;
 
         GetWindowThreadProcessId(foregroundWindow, out var processId);
         return processId == Environment.ProcessId;
@@ -207,6 +239,16 @@ public partial class MainWindow : Window
     private void ToggleTitle_Click(object sender, RoutedEventArgs e)
     {
         SetShowTitle(ToggleTitleMenu.IsChecked);
+    }
+
+    private void Window_UserInteracted(object sender, RoutedEventArgs e)
+    {
+        if (_autoShownForIdle)
+        {
+            _autoShownWindowInteracted = true;
+            _autoHideAfter ??= DateTime.Now + PostInputVisibilityDuration;
+            _autoHideTimer.Start();
+        }
     }
 
     private void TrayIcon_LeftClick(object sender, RoutedEventArgs e)
