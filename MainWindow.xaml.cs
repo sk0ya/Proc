@@ -2,13 +2,17 @@ using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace Proc;
 
 public partial class MainWindow : Window
 {
+    private static readonly TimeSpan PostInputVisibilityDuration = TimeSpan.FromSeconds(10);
+
     private readonly ActivityLogger _logger;
     private readonly AppSettings _settings;
+    private readonly DispatcherTimer _autoHideTimer;
     private bool _showTitle;
     private bool _showWhenIdle;
     private bool _autoShownForIdle;
@@ -18,6 +22,9 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+
+        _autoHideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _autoHideTimer.Tick += (_, _) => HideAutoShownIfReady();
 
         _settings = AppSettings.Load();
         _showTitle = _settings.ShowTitle;
@@ -65,6 +72,7 @@ public partial class MainWindow : Window
     private void ToggleVisibility()
     {
         _autoShownForIdle = false;
+        _autoHideTimer.Stop();
         if (IsVisible) Hide();
         else { Show(); Activate(); }
     }
@@ -116,6 +124,9 @@ public partial class MainWindow : Window
         _settings.ShowWhenIdle = value;
         _settings.Save();
 
+        if (!value)
+            _autoHideTimer.Stop();
+
         if (!value && _autoShownForIdle)
         {
             _autoShownForIdle = false;
@@ -132,6 +143,7 @@ public partial class MainWindow : Window
 
         if (isIdle)
         {
+            _autoHideTimer.Stop();
             if (!IsVisible)
             {
                 _autoShownForIdle = true;
@@ -142,10 +154,29 @@ public partial class MainWindow : Window
 
         if (_autoShownForIdle)
         {
-            _autoShownForIdle = false;
-            Hide();
+            _autoHideTimer.Start();
+            HideAutoShownIfReady();
         }
     }
+
+    private void HideAutoShownIfReady()
+    {
+        if (!_autoShownForIdle)
+        {
+            _autoHideTimer.Stop();
+            return;
+        }
+
+        if (_logger.IsIdle || IsProcActive() || _logger.InputIdleTime < PostInputVisibilityDuration)
+            return;
+
+        _autoShownForIdle = false;
+        _autoHideTimer.Stop();
+        Hide();
+    }
+
+    private static bool IsProcActive() =>
+        Application.Current.Windows.OfType<Window>().Any(window => window.IsActive);
 
     private void ToggleTitle_Click(object sender, RoutedEventArgs e)
     {
