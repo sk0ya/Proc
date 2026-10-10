@@ -228,6 +228,32 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="ChipRadio" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource ThemeSubText}"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bd" Padding="8,2" Margin="0,0,4,0" CornerRadius="3"
+                                Background="{DynamicResource ThemeSurfaceAlt}"
+                                BorderBrush="{DynamicResource ThemeCheckBorder}" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeAccent}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeHover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <DockPanel>
@@ -348,6 +374,27 @@
             </DockPanel>
         </Border>
 
+        <!-- Daily stacked chart (Week / Month views) -->
+        <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeSurfaceAlt}" Padding="12,8,12,4"
+                BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="0,0,0,1"
+                Visibility="{Binding IsDayView, Converter={StaticResource InverseBoolToVis}}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                    <TextBlock Text="Daily" Style="{StaticResource HeaderText}" FontSize="12"
+                               VerticalAlignment="Center"/>
+                    <TextBlock DockPanel.Dock="Right" HorizontalAlignment="Right" Text="Click a day to open it"
+                               FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"
+                               Foreground="{DynamicResource ThemeDimText}"/>
+                </DockPanel>
+                <Grid Height="110">
+                    <Canvas x:Name="DailyLabels" Height="16" VerticalAlignment="Bottom"/>
+                    <Canvas x:Name="DailyCanvas" Height="94" VerticalAlignment="Top"
+                            Background="Transparent" ClipToBounds="True"
+                            SizeChanged="DailyCanvas_SizeChanged"/>
+                </Grid>
+            </DockPanel>
+        </Border>
+
         <!-- Main content -->
         <Grid Margin="0">
             <Grid.ColumnDefinitions>
@@ -359,11 +406,29 @@
             <!-- Left: App usage bars -->
             <DockPanel Grid.Column="0">
                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                    <TextBlock Text="Application Usage"
-                               Style="{StaticResource HeaderText}"/>
+                    <TextBlock Text="{Binding GroupLabel, StringFormat={}{0} Usage}"
+                               Style="{StaticResource HeaderText}" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding RangeText}" Style="{StaticResource HeaderText}"
                                FontWeight="Normal" Margin="8,0,0,0"/>
                     <StackPanel x:Name="FilterBar" SizeChanged="FilterBar_SizeChanged" DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <!-- Group by -->
+                        <RadioButton x:Name="GroupAppRadio" Content="App" GroupName="Group" IsChecked="True"
+                                     Style="{StaticResource ChipRadio}" Checked="GroupMode_Checked"
+                                     ToolTip="Group by application"/>
+                        <RadioButton x:Name="GroupCategoryRadio" Content="Category" GroupName="Group"
+                                     Style="{StaticResource ChipRadio}" Checked="GroupMode_Checked"
+                                     ToolTip="Group by category (rules in Settings)"/>
+                        <RadioButton x:Name="GroupSiteRadio" Content="Site" GroupName="Group"
+                                     Style="{StaticResource ChipRadio}" Checked="GroupMode_Checked"
+                                     ToolTip="Browser time by site"/>
+                        <Border Padding="10,3" CornerRadius="3" Cursor="Hand" Margin="8,0,6,0"
+                                Background="{DynamicResource ThemeSurfaceAlt}"
+                                BorderBrush="{DynamicResource ThemeCheckBorder}" BorderThickness="1"
+                                MouseLeftButtonUp="ExportButton_Click"
+                                ToolTip="Export the current view as CSV or Markdown">
+                            <TextBlock Text="Export" FontFamily="Consolas" FontSize="12"
+                                       Foreground="{DynamicResource ThemeSubText}"/>
+                        </Border>
                         <!-- App filter (hide / show apps) -->
                         <Border x:Name="FilterButton" Padding="10,3" CornerRadius="3" Cursor="Hand"
                                 Background="{DynamicResource ThemeSurfaceAlt}" BorderThickness="1"

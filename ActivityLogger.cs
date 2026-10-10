@@ -9,7 +9,7 @@ namespace Proc;
 public class ActivityLogger : IDisposable
 {
     private readonly System.Threading.Timer _logTimer;
-    private readonly System.Threading.Timer _idleTimer;
+    private readonly System.Threading.Timer _sampleTimer;
     private readonly string _logDir;
     public string LogDirectory => _logDir;
     private IntPtr _winEventHook;
@@ -51,29 +51,73 @@ public class ActivityLogger : IDisposable
     private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
     private static readonly TimeSpan ShowIdleThreshold = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan LoggingIdleThreshold = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan IdleCheckInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan SampleInterval = TimeSpan.FromSeconds(1);
 
     public event Action? OnRecorded;
     public event Action? OnActiveChanged;
     public event Action<bool>? OnIdleChanged;
-    public string? CurrentProcessName { get; private set; }
-    public string? CurrentWindowTitle { get; private set; }
-    public bool IsIdle { get; private set; }
+
+    private sealed record WindowInfo(string ProcessName, string WindowTitle);
+
+    // Replaced atomically so readers on other threads always see a consistent pair
+    private volatile WindowInfo? _current;
+    public string? CurrentProcessName => _current?.ProcessName;
+    public string? CurrentWindowTitle => _current?.WindowTitle;
+
+    private volatile bool _isIdle;
+    public bool IsIdle => _isIdle;
 
     private volatile bool _isSessionLocked;
-    private readonly Dictionary<string, string> _exePaths = new();
+
+    // Guards everything below (touched by the hook on the UI thread and by both timers)
+    private readonly object _lock = new();
+
+    // Seconds each window was in the foreground during the current minute; the minute's
+    // record goes to the window that was used most, not whichever happened to be active at the tick
+    private readonly Dictionary<WindowInfo, int> _minuteSamples = new();
+
+    // pid -> process name; cleared every minute so reused pids are picked up
+    private readonly Dictionary<uint, string> _processNames = new();
+
+    private HashSet<string> _titleExcludedApps = new(StringComparer.OrdinalIgnoreCase);
+    private int _retentionDays;
+
+    // Today's records kept in memory so the overlay doesn't re-read the CSV on every window switch
+    private List<ActivityRecord>? _todayRecords;
+    private DateTime _todayDate;
 
     public ActivityLogger()
     {
         _logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Proc", "logs");
         Directory.CreateDirectory(_logDir);
 
+        ReloadSettings();
+        LogAnalyzer.DeleteOldLogs(_logDir, _retentionDays, DateTime.Today);
+
         // Keep a reference to prevent GC collection of the delegate
         _winEventProc = OnForegroundChanged;
 
         SystemEvents.SessionSwitch += OnSessionSwitch;
         _logTimer = new System.Threading.Timer(OnTick, null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
-        _idleTimer = new System.Threading.Timer(OnIdleCheck, null, TimeSpan.Zero, IdleCheckInterval);
+        _sampleTimer = new System.Threading.Timer(OnSample, null, TimeSpan.Zero, SampleInterval);
+    }
+
+    /// <summary>Re-reads the privacy settings (title exclusion, log retention).</summary>
+    public void ReloadSettings()
+    {
+        var settings = AppSettings.Load();
+        lock (_lock)
+        {
+            _titleExcludedApps = new HashSet<string>(
+                settings.TitleExcludedApps.Select(NormalizeProcessName), StringComparer.OrdinalIgnoreCase);
+            _retentionDays = settings.LogRetentionDays;
+        }
+    }
+
+    private static string NormalizeProcessName(string name)
+    {
+        name = name.Trim();
+        return name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name[..^4] : name;
     }
 
     public void StartForegroundHook()
@@ -95,18 +139,20 @@ public class ActivityLogger : IDisposable
         OnActiveChanged?.Invoke();
     }
 
-    private void UpdateCurrentWindow()
+    /// <summary>Captures the foreground window; returns true when it differs from the previous one.</summary>
+    private bool UpdateCurrentWindow(WindowInfo? info = null)
     {
         try
         {
-            var record = CaptureActiveWindow();
-            if (record == null) return;
-            CurrentProcessName = record.ProcessName;
-            CurrentWindowTitle = record.WindowTitle;
+            info ??= CaptureActiveWindow();
+            if (info == null || info == _current) return false;
+            _current = info;
+            return true;
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore
+            ErrorLog.Write("UpdateCurrentWindow", ex);
+            return false;
         }
     }
 
@@ -137,20 +183,32 @@ public class ActivityLogger : IDisposable
 
     private void SetIdleState(bool isIdle)
     {
-        if (IsIdle == isIdle) return;
-        IsIdle = isIdle;
+        if (_isIdle == isIdle) return;
+        _isIdle = isIdle;
         OnIdleChanged?.Invoke(isIdle);
     }
 
-    private void OnIdleCheck(object? state)
+    private void OnSample(object? state)
     {
         try
         {
-            UpdateIdleState();
+            var idleTime = GetIdleTime();
+            UpdateIdleState(idleTime);
+            if (_isSessionLocked || idleTime >= ShowIdleThreshold) return;
+
+            var info = CaptureActiveWindow();
+            if (info == null) return;
+
+            lock (_lock)
+                _minuteSamples[info] = _minuteSamples.GetValueOrDefault(info) + 1;
+
+            // Title changes inside the same window (e.g. browser tabs) don't fire the foreground hook
+            if (UpdateCurrentWindow(info))
+                OnActiveChanged?.Invoke();
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore idle detection errors
+            ErrorLog.Write("Sample", ex);
         }
     }
 
@@ -160,34 +218,100 @@ public class ActivityLogger : IDisposable
         {
             if (_isSessionLocked)
             {
+                ClearMinute();
                 SetIdleState(false);
                 return;
             }
 
             var idleTime = GetIdleTime();
             UpdateIdleState(idleTime);
-            if (idleTime >= LoggingIdleThreshold) return;
-
-            var record = idleTime >= ShowIdleThreshold
-                ? new ActivityRecord(DateTime.Now, "Idle", "", true)
-                : CaptureActiveWindow();
-            if (record == null) return;
-            if (!record.IsIdle)
+            if (idleTime >= LoggingIdleThreshold)
             {
-                CurrentProcessName = record.ProcessName;
-                CurrentWindowTitle = record.WindowTitle;
+                ClearMinute();
+                return;
             }
-            var filePath = GetLogFilePath(DateTime.Today);
-            File.AppendAllText(filePath, record.ToCsvLine() + Environment.NewLine, Encoding.UTF8);
+
+            var now = DateTime.Now;
+            ActivityRecord? record;
+            if (idleTime >= ShowIdleThreshold)
+            {
+                ClearMinute();
+                record = new ActivityRecord(now, "Idle", "", true);
+            }
+            else
+            {
+                var info = TakeDominantWindow() ?? CaptureActiveWindow();
+                if (info == null) return;
+                record = new ActivityRecord(now, info.ProcessName, info.WindowTitle);
+            }
+
+            Append(record);
             OnRecorded?.Invoke();
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore logging errors
+            ErrorLog.Write("Tick", ex);
         }
     }
 
-    private ActivityRecord? CaptureActiveWindow()
+    private void ClearMinute()
+    {
+        lock (_lock)
+        {
+            _minuteSamples.Clear();
+            _processNames.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Picks the process used longest during the minute, then its most-used title,
+    /// and resets the samples for the next minute.
+    /// </summary>
+    private WindowInfo? TakeDominantWindow()
+    {
+        lock (_lock)
+        {
+            try
+            {
+                if (_minuteSamples.Count == 0) return null;
+                var process = _minuteSamples
+                    .GroupBy(kv => kv.Key.ProcessName)
+                    .MaxBy(g => g.Sum(kv => kv.Value))!;
+                return process.MaxBy(kv => kv.Value).Key;
+            }
+            finally
+            {
+                _minuteSamples.Clear();
+                _processNames.Clear();
+            }
+        }
+    }
+
+    private void Append(ActivityRecord record)
+    {
+        var date = record.Timestamp.Date;
+        lock (_lock)
+        {
+            // Load the cache before writing so the new line isn't picked up twice
+            EnsureTodayLoaded(date);
+            File.AppendAllText(LogAnalyzer.GetLogFilePath(_logDir, date),
+                record.ToCsvLine() + Environment.NewLine, Encoding.UTF8);
+            _todayRecords!.Add(record);
+        }
+    }
+
+    private void EnsureTodayLoaded(DateTime date)
+    {
+        if (_todayRecords != null && _todayDate == date) return;
+
+        bool dayChanged = _todayRecords != null && _todayDate != date;
+        _todayRecords = LogAnalyzer.ReadLogFile(LogAnalyzer.GetLogFilePath(_logDir, date));
+        _todayDate = date;
+        if (dayChanged)
+            LogAnalyzer.DeleteOldLogs(_logDir, _retentionDays, date);
+    }
+
+    private WindowInfo? CaptureActiveWindow()
     {
         var hwnd = GetForegroundWindow();
         if (hwnd == IntPtr.Zero) return null;
@@ -197,61 +321,70 @@ public class ActivityLogger : IDisposable
         var title = sb.ToString();
 
         GetWindowThreadProcessId(hwnd, out uint pid);
+        var processName = GetProcessName(pid);
+
+        lock (_lock)
+        {
+            if (_titleExcludedApps.Contains(processName))
+                title = "";
+        }
+        return new WindowInfo(processName, title);
+    }
+
+    private string GetProcessName(uint pid)
+    {
+        lock (_lock)
+        {
+            if (_processNames.TryGetValue(pid, out var cached))
+                return cached;
+        }
+
         string processName;
         try
         {
-            var proc = Process.GetProcessById((int)pid);
+            using var proc = Process.GetProcessById((int)pid);
             processName = proc.ProcessName;
             try
             {
                 if (proc.MainModule?.FileName is string path)
-                {
-                    _exePaths[processName] = path;
                     IconHelper.RegisterExePath(processName, path);
-                }
             }
-            catch { }
+            catch
+            {
+                // access denied for elevated processes when not running as admin
+            }
         }
         catch
         {
             processName = "(unknown)";
         }
 
-        return new ActivityRecord(DateTime.Now, processName, title);
+        lock (_lock)
+            _processNames[pid] = processName;
+        return processName;
     }
 
     public List<ActivityRecord> GetTodayRecords()
     {
-        var filePath = GetLogFilePath(DateTime.Today);
-        if (!File.Exists(filePath)) return [];
-
-        var records = new List<ActivityRecord>();
-        foreach (var line in File.ReadAllLines(filePath, Encoding.UTF8))
+        lock (_lock)
         {
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            try
-            {
-                records.Add(ActivityRecord.FromCsvLine(line));
-            }
-            catch
-            {
-                // skip malformed lines
-            }
+            EnsureTodayLoaded(DateTime.Today);
+            return [.. _todayRecords!];
         }
-        return records;
     }
 
-    public string? GetExePath(string processName) =>
-        _exePaths.TryGetValue(processName, out var path) ? path : null;
-
-    private string GetLogFilePath(DateTime date) =>
-        Path.Combine(_logDir, $"{date:yyyy-MM-dd}.csv");
+    /// <summary>Drops the in-memory copy of today's log (call after the file was changed externally).</summary>
+    public void InvalidateCache()
+    {
+        lock (_lock)
+            _todayRecords = null;
+    }
 
     public void Dispose()
     {
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         _logTimer.Dispose();
-        _idleTimer.Dispose();
+        _sampleTimer.Dispose();
         if (_winEventHook != IntPtr.Zero)
         {
             UnhookWinEvent(_winEventHook);

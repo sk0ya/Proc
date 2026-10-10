@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Proc - Settings"
-        Width="340" Height="590"
+        Width="340" SizeToContent="Height"
         WindowStyle="None"
         AllowsTransparency="True"
         ResizeMode="NoResize"
@@ -11,6 +11,24 @@
         Icon="/Proc.ico"
         KeyDown="Window_KeyDown"
         Deactivated="Window_Deactivated">
+
+    <Window.Resources>
+        <Style x:Key="InputBox" TargetType="TextBox">
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeCheckBg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeCheckBorder}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource ThemeText}"/>
+            <Setter Property="Padding" Value="4,3"/>
+        </Style>
+        <Style x:Key="HintText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource ThemeSubText}"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+    </Window.Resources>
 
     <Grid Margin="20,16">
         <Grid.RowDefinitions>
@@ -36,6 +54,22 @@
             <RowDefinition Height="8"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="8"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="16"/>
+            <!-- Privacy -->
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="4"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="16"/>
+            <!-- Categories -->
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="4"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="4"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
@@ -237,5 +271,39 @@
                      Padding="4,3"
                      TextChanged="AccentHexBox_TextChanged"/>
         </StackPanel>
+
+        <!-- Privacy section -->
+        <TextBlock Grid.Row="22" Text="Privacy" Foreground="{DynamicResource ThemeAccent}"
+                   FontFamily="Consolas" FontSize="14" FontWeight="Bold"/>
+
+        <TextBlock Grid.Row="24" Style="{StaticResource HintText}"
+                   Text="Don't record window titles for (comma separated):"/>
+
+        <TextBox x:Name="TitleExcludedBox" Grid.Row="26" Style="{StaticResource InputBox}"
+                 ToolTip="e.g. keepass, signal"
+                 TextChanged="TitleExcludedBox_TextChanged"/>
+
+        <StackPanel Grid.Row="28" Orientation="Horizontal">
+            <TextBlock Style="{StaticResource HintText}" Text="Delete logs older than"
+                       VerticalAlignment="Center"/>
+            <TextBox x:Name="RetentionBox" Width="50" Margin="6,0" Style="{StaticResource InputBox}"
+                     TextAlignment="Right" MaxLength="5"
+                     TextChanged="RetentionBox_TextChanged"/>
+            <TextBlock Style="{StaticResource HintText}" Text="days (0 = keep)"
+                       VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Categories section -->
+        <TextBlock Grid.Row="30" Text="Categories" Foreground="{DynamicResource ThemeAccent}"
+                   FontFamily="Consolas" FontSize="14" FontWeight="Bold"/>
+
+        <TextBlock Grid.Row="32" Style="{StaticResource HintText}"
+                   Text="One per line: Name = process, title:text"/>
+
+        <TextBox x:Name="CategoriesBox" Grid.Row="34" Style="{StaticResource InputBox}"
+                 Height="110" AcceptsReturn="True" TextWrapping="NoWrap"
+                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                 ToolTip="e.g.&#x0a;Work = devenv, code, title:Jira&#x0a;Chat = slack, teams"
+                 TextChanged="CategoriesBox_TextChanged"/>
     </Grid>
 </Window>

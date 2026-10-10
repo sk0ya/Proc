@@ -3,20 +3,18 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
-using Microsoft.Win32;
 
 namespace Proc;
 
 public partial class SettingsWindow : Window
 {
-    private const string RegistryKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-    private const string AppName = "Proc";
-
     private bool _initialized;
     private bool _suppressHexEvent;
 
     public event Action<bool>? ShowTitleChanged;
     public event Action<bool>? ShowWhenIdleChanged;
+    public event Action? PrivacyChanged;
+    public event Action? CategoriesChanged;
 
     // Background swatch colors
     private static readonly string[] BgColors =
@@ -55,7 +53,7 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         var settings = AppSettings.Load();
 
-        StartupCheckBox.IsChecked = IsStartupEnabled();
+        StartupCheckBox.IsChecked = StartupManager.IsEnabled();
         ShowTitleCheckBox.IsChecked = showTitle;
         ShowWhenIdleCheckBox.IsChecked = showWhenIdle;
         RunAsAdminCheckBox.IsChecked = settings.RunAsAdmin;
@@ -69,6 +67,10 @@ public partial class SettingsWindow : Window
         UpdatePreview(BgPreview, settings.BgColor);
         UpdatePreview(AccentPreview, settings.AccentColor);
         _suppressHexEvent = false;
+
+        TitleExcludedBox.Text = string.Join(", ", settings.TitleExcludedApps);
+        RetentionBox.Text = settings.LogRetentionDays.ToString();
+        CategoriesBox.Text = string.Join(Environment.NewLine, settings.CategoryRules);
 
         _initialized = true;
     }
@@ -140,10 +142,11 @@ public partial class SettingsWindow : Window
         var theme = ColorTheme.FromColors(bg, accent);
         theme.Apply();
 
-        var settings = AppSettings.Load();
-        settings.BgColor = bgText.StartsWith('#') ? bgText : "#" + bgText;
-        settings.AccentColor = accentText.StartsWith('#') ? accentText : "#" + accentText;
-        settings.Save();
+        AppSettings.Update(s =>
+        {
+            s.BgColor = bgText.StartsWith('#') ? bgText : "#" + bgText;
+            s.AccentColor = accentText.StartsWith('#') ? accentText : "#" + accentText;
+        });
     }
 
     private static void UpdatePreview(Border preview, string hex)
@@ -152,32 +155,10 @@ public partial class SettingsWindow : Window
             preview.Background = new SolidColorBrush(ColorTheme.ParseHex(hex));
     }
 
-    private static bool IsStartupEnabled()
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, false);
-        return key?.GetValue(AppName) is string;
-    }
-
-    private static void SetStartupEnabled(bool enabled)
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, true);
-        if (key == null) return;
-
-        if (enabled)
-        {
-            var exePath = Environment.ProcessPath ?? "";
-            if (!string.IsNullOrEmpty(exePath))
-                key.SetValue(AppName, $"\"{exePath}\"");
-        }
-        else
-        {
-            key.DeleteValue(AppName, false);
-        }
-    }
-
     private void StartupCheckBox_Changed(object sender, RoutedEventArgs e)
     {
-        SetStartupEnabled(StartupCheckBox.IsChecked == true);
+        if (!_initialized) return;
+        StartupManager.SetEnabled(StartupCheckBox.IsChecked == true);
     }
 
     private void ShowTitleCheckBox_Changed(object sender, RoutedEventArgs e)
@@ -194,9 +175,41 @@ public partial class SettingsWindow : Window
     {
         if (!_initialized) return;
 
-        var settings = AppSettings.Load();
-        settings.RunAsAdmin = RunAsAdminCheckBox.IsChecked == true;
-        settings.Save();
+        var runAsAdmin = RunAsAdminCheckBox.IsChecked == true;
+        AppSettings.Update(s => s.RunAsAdmin = runAsAdmin);
+        // Switch between the Run entry and the elevated logon task
+        if (StartupCheckBox.IsChecked == true)
+            StartupManager.SetEnabled(true);
+    }
+
+    private void TitleExcludedBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_initialized) return;
+        var apps = TitleExcludedBox.Text
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        AppSettings.Update(s => s.TitleExcludedApps = apps);
+        PrivacyChanged?.Invoke();
+    }
+
+    private void RetentionBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_initialized) return;
+        if (!int.TryParse(RetentionBox.Text.Trim(), out var days) || days < 0) return;
+        AppSettings.Update(s => s.LogRetentionDays = days);
+        PrivacyChanged?.Invoke();
+    }
+
+    private void CategoriesBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_initialized) return;
+        var lines = CategoriesBox.Text
+            .Split('\n')
+            .Select(l => l.TrimEnd('\r'))
+            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .ToList();
+        AppSettings.Update(s => s.CategoryRules = lines);
+        CategoriesChanged?.Invoke();
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)

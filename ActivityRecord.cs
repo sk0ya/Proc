@@ -1,69 +1,24 @@
+using System.Globalization;
+
 namespace Proc;
 
 public record ActivityRecord(DateTime Timestamp, string ProcessName, string WindowTitle, bool IsIdle = false)
 {
+    private static readonly string[] TimeFormats = ["HH:mm:ss", "H:mm:ss"];
+
     public string ToCsvLine() => IsIdle
-        ? $"{Timestamp:HH:mm:ss},{Escape(ProcessName)},{Escape(WindowTitle)},idle"
-        : $"{Timestamp:HH:mm:ss},{Escape(ProcessName)},{Escape(WindowTitle)}";
+        ? $"{Timestamp:HH:mm:ss},{CsvUtil.Escape(ProcessName)},{CsvUtil.Escape(WindowTitle)},idle"
+        : $"{Timestamp:HH:mm:ss},{CsvUtil.Escape(ProcessName)},{CsvUtil.Escape(WindowTitle)}";
 
     public static ActivityRecord FromCsvLine(string line)
     {
-        var parts = ParseCsvLine(line);
+        var parts = CsvUtil.ParseLine(line);
         if (parts.Count < 3) throw new FormatException("Invalid CSV line");
         bool isIdle = parts.Count >= 4 && parts[3] == "idle";
         return new ActivityRecord(
-            DateTime.Parse(parts[0]),
+            DateTime.ParseExact(parts[0], TimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None),
             parts[1],
             parts[2],
             isIdle);
-    }
-
-    private static string Escape(string s)
-    {
-        if (s.Contains(',') || s.Contains('"') || s.Contains('\n'))
-            return "\"" + s.Replace("\"", "\"\"") + "\"";
-        return s;
-    }
-
-    private static List<string> ParseCsvLine(string line)
-    {
-        var result = new List<string>();
-        bool inQuote = false;
-        var current = new System.Text.StringBuilder();
-        for (int i = 0; i < line.Length; i++)
-        {
-            char c = line[i];
-            if (inQuote)
-            {
-                if (c == '"')
-                {
-                    if (i + 1 < line.Length && line[i + 1] == '"')
-                    {
-                        current.Append('"');
-                        i++;
-                    }
-                    else
-                    {
-                        inQuote = false;
-                    }
-                }
-                else
-                {
-                    current.Append(c);
-                }
-            }
-            else
-            {
-                if (c == '"') inQuote = true;
-                else if (c == ',')
-                {
-                    result.Add(current.ToString());
-                    current.Clear();
-                }
-                else current.Append(c);
-            }
-        }
-        result.Add(current.ToString());
-        return result;
     }
 }

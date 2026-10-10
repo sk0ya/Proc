@@ -50,6 +50,42 @@ public partial class AnalysisWindow : Window
         {
             RenderTimeline();
         }
+
+        if (e.PropertyName is nameof(AnalysisViewModel.DailyStacks)
+            or nameof(AnalysisViewModel.ProcessColors)
+            or nameof(AnalysisViewModel.SelectedAppName))
+        {
+            RenderDailyChart();
+        }
+    }
+
+    private void GroupMode_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_vm == null) return;
+
+        if (GroupAppRadio.IsChecked == true) _vm.SetGroupMode(GroupMode.App);
+        else if (GroupCategoryRadio.IsChecked == true) _vm.SetGroupMode(GroupMode.Category);
+        else if (GroupSiteRadio.IsChecked == true) _vm.SetGroupMode(GroupMode.Site);
+    }
+
+    private void ExportButton_Click(object sender, MouseButtonEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Export",
+            FileName = _vm.ExportFileName,
+            Filter = "CSV (*.csv)|*.csv|Markdown (*.md)|*.md",
+        };
+        if (dlg.ShowDialog(this) != true) return;
+        try
+        {
+            _vm.Export(dlg.FileName);
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("Export", ex);
+            MessageBox.Show(this, $"Export failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void Period_Checked(object sender, RoutedEventArgs e)
@@ -122,13 +158,14 @@ public partial class AnalysisWindow : Window
 
     private void HideApp_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: AppBarItem item } && item.ProcessName != "Other")
+        // Hiding works on app names; in Category / Site mode the rows aren't apps
+        if (_vm.IsAppMode && sender is FrameworkElement { DataContext: AppBarItem item } && item.ProcessName != "Other")
             _vm.SetAppVisible(item.ProcessName, false);
     }
 
     private void ShowOnlyApp_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: AppBarItem item } && item.ProcessName != "Other")
+        if (_vm.IsAppMode && sender is FrameworkElement { DataContext: AppBarItem item } && item.ProcessName != "Other")
             _vm.ShowOnlyApp(item.ProcessName);
     }
 
@@ -551,6 +588,120 @@ public partial class AnalysisWindow : Window
         Canvas.SetLeft(rect, x);
         Canvas.SetTop(rect, 0);
         TimelineCanvas.Children.Add(rect);
+    }
+
+    private void DailyCanvas_SizeChanged(object sender, SizeChangedEventArgs e) => RenderDailyChart();
+
+    /// <summary>Draws one stacked bar per day (Week / Month views); clicking a bar opens that day.</summary>
+    private void RenderDailyChart()
+    {
+        DailyCanvas.Children.Clear();
+        DailyLabels.Children.Clear();
+
+        var stacks = _vm.DailyStacks;
+        double width = DailyCanvas.ActualWidth;
+        double height = DailyCanvas.ActualHeight;
+        if (_vm.IsDayView || stacks.Count == 0 || width <= 0 || height <= 0) return;
+
+        int maxMinutes = Math.Max(1, stacks.Max(s => s.TotalMinutes));
+        double slot = width / stacks.Count;
+        double barWidth = Math.Max(2, Math.Min(40, slot * 0.7));
+        var colors = _vm.ProcessColors;
+        var selectedApp = _vm.SelectedAppName;
+        var defaultBrush = new SolidColorBrush(BarPalette.GetColor(15));
+        defaultBrush.Freeze();
+        var labelBrush = (SolidColorBrush)FindResource("ThemeText");
+        var dimBrush = (SolidColorBrush)FindResource("ThemeDimText");
+        // Month views get crowded: label every few days
+        int labelEvery = slot < 24 ? (int)Math.Ceiling(24 / slot) : 1;
+
+        for (int i = 0; i < stacks.Count; i++)
+        {
+            var stack = stacks[i];
+            double x = i * slot + (slot - barWidth) / 2;
+            double y = height;
+
+            foreach (var seg in stack.Segments)
+            {
+                double h = seg.Minutes / (double)maxMinutes * height;
+                y -= h;
+                var rect = new Rectangle
+                {
+                    Width = barWidth,
+                    Height = Math.Max(0.5, h),
+                    Fill = colors.TryGetValue(seg.ProcessName, out var b) ? b : defaultBrush,
+                    Opacity = selectedApp == "" || selectedApp == seg.ProcessName ? 1.0 : 0.3,
+                    IsHitTestVisible = false
+                };
+                Canvas.SetLeft(rect, x);
+                Canvas.SetTop(rect, y);
+                DailyCanvas.Children.Add(rect);
+            }
+
+            // Full-height transparent hit area with the day's breakdown as tooltip
+            var hit = new Rectangle
+            {
+                Width = slot,
+                Height = height,
+                Fill = Brushes.Transparent,
+                Cursor = Cursors.Hand,
+                Tag = stack.Date,
+                ToolTip = BuildDayTooltip(stack)
+            };
+            hit.MouseLeftButtonUp += DailyBar_Click;
+            Canvas.SetLeft(hit, i * slot);
+            DailyCanvas.Children.Add(hit);
+
+            if (i % labelEvery != 0) continue;
+            var label = new TextBlock
+            {
+                Text = stacks.Count <= 7 ? stack.Date.ToString("MM/dd ddd") : stack.Date.Day.ToString(),
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 10,
+                Foreground = stack.Date == DateTime.Today ? (Brush)FindResource("ThemeAccent")
+                    : stack.TotalMinutes > 0 ? labelBrush : dimBrush
+            };
+            label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            Canvas.SetLeft(label, Math.Clamp(i * slot + slot / 2 - label.DesiredSize.Width / 2, 0,
+                Math.Max(0, width - label.DesiredSize.Width)));
+            DailyLabels.Children.Add(label);
+        }
+    }
+
+    private void DailyBar_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: DateTime date }) return;
+        _vm.SetDate(date);
+        DayRadio.IsChecked = true;
+    }
+
+    private static object BuildDayTooltip(DailyStack stack)
+    {
+        var res = Application.Current.Resources;
+        var sp = new StackPanel { MaxWidth = 350 };
+        sp.Children.Add(new TextBlock
+        {
+            Text = $"{stack.Date:yyyy/MM/dd (ddd)}  {LogAnalyzer.FormatTime(stack.TotalMinutes)}",
+            FontFamily = new FontFamily("Consolas"),
+            FontWeight = FontWeights.Bold,
+            Foreground = (SolidColorBrush)res["ThemeAccent"]
+        });
+        foreach (var seg in stack.Segments.OrderByDescending(s => s.Minutes).Take(8))
+        {
+            sp.Children.Add(new TextBlock
+            {
+                Text = $"{LogAnalyzer.FormatTime(seg.Minutes),7}  {seg.ProcessName}",
+                FontFamily = new FontFamily("Consolas"),
+                Foreground = (SolidColorBrush)res["ThemeText"]
+            });
+        }
+        return new ToolTip
+        {
+            Content = sp,
+            Background = (SolidColorBrush)res["ThemeSurfaceAlt"],
+            BorderBrush = (SolidColorBrush)res["ThemeCheckBorder"],
+            Padding = new Thickness(8, 6, 8, 6)
+        };
     }
 
     private static object BuildTooltip(TimelineBlock block)

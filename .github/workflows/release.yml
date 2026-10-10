@@ -26,8 +26,14 @@ jobs:
       - name: Publish
         run: dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.version.outputs.VERSION }} -o publish
 
+      - name: Compute checksum
+        shell: pwsh
+        run: (Get-FileHash publish/Proc.exe -Algorithm SHA256).Hash.ToLower() | Out-File -Encoding ascii -NoNewline publish/Proc.exe.sha256
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: publish/Proc.exe
+          files: |
+            publish/Proc.exe
+            publish/Proc.exe.sha256
           generate_release_notes: true

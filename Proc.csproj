@@ -16,6 +16,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The test project lives in a subfolder; keep its sources out of the app -->
+    <Compile Remove="Proc.Tests\**" />
+    <Page Remove="Proc.Tests\**" />
+    <None Remove="Proc.Tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Resource Include="Proc.ico" />
   </ItemGroup>
 

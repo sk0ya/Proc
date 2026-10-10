@@ -39,6 +39,10 @@ public static class IconHelper
     private static readonly string _cacheFilePath;
     private static readonly object _lock = new();
 
+    // Names that couldn't be resolved, so the full process scan isn't repeated on every refresh
+    private static readonly ConcurrentDictionary<string, DateTime> _missCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan MissRetryInterval = TimeSpan.FromMinutes(5);
+
     static IconHelper()
     {
         var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Proc");
@@ -93,6 +97,7 @@ public static class IconHelper
                 return;
             _exePathCache[processName] = exePath;
         }
+        _missCache.TryRemove(processName, out _);
         SavePathCache();
     }
 
@@ -108,6 +113,9 @@ public static class IconHelper
             if (_exePathCache.TryGetValue(processName, out var cached))
                 return cached;
         }
+
+        if (_missCache.TryGetValue(processName, out var missedAt) && DateTime.Now - missedAt < MissRetryInterval)
+            return null;
 
         // Try to find from running processes
         try
@@ -129,6 +137,7 @@ public static class IconHelper
         }
         catch { }
 
+        _missCache[processName] = DateTime.Now;
         return null;
     }
 

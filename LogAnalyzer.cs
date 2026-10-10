@@ -16,6 +16,13 @@ public record TitleUsage(string WindowTitle, int Minutes);
 
 public record DailyUsage(DateTime Date, int Minutes);
 
+public record DailySegment(string ProcessName, int Minutes);
+
+public record DailyStack(DateTime Date, List<DailySegment> Segments)
+{
+    public int TotalMinutes => Segments.Sum(s => s.Minutes);
+}
+
 public record TimelineBlock(
     TimeSpan StartTime,
     TimeSpan EndTime,
@@ -46,25 +53,64 @@ public static class LogAnalyzer
         return (monday, monday.AddDays(6));
     }
 
+    public static string GetLogFilePath(string logDirectory, DateTime date) =>
+        Path.Combine(logDirectory, $"{date:yyyy-MM-dd}.csv");
+
     public static List<(DateTime Date, ActivityRecord Record)> ReadRecords(
         string logDirectory, DateTime startDate, DateTime endDate)
     {
         var results = new List<(DateTime, ActivityRecord)>();
         for (var d = startDate.Date; d <= endDate.Date; d = d.AddDays(1))
         {
-            var path = Path.Combine(logDirectory, $"{d:yyyy-MM-dd}.csv");
-            if (!File.Exists(path)) continue;
-            foreach (var line in File.ReadAllLines(path, Encoding.UTF8))
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                try
-                {
-                    results.Add((d, ActivityRecord.FromCsvLine(line)));
-                }
-                catch { }
-            }
+            foreach (var record in ReadLogFile(GetLogFilePath(logDirectory, d)))
+                results.Add((d, record));
         }
         return results;
+    }
+
+    /// <summary>Reads one daily log file, skipping malformed lines. Missing file = no records.</summary>
+    public static List<ActivityRecord> ReadLogFile(string path)
+    {
+        var records = new List<ActivityRecord>();
+        if (!File.Exists(path)) return records;
+        foreach (var line in File.ReadAllLines(path, Encoding.UTF8))
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            try
+            {
+                records.Add(ActivityRecord.FromCsvLine(line));
+            }
+            catch
+            {
+                // skip malformed lines
+            }
+        }
+        return records;
+    }
+
+    /// <summary>Deletes daily logs dated more than <paramref name="retentionDays"/> days before today.</summary>
+    public static int DeleteOldLogs(string logDirectory, int retentionDays, DateTime today)
+    {
+        if (retentionDays <= 0 || !Directory.Exists(logDirectory)) return 0;
+        var cutoff = today.Date.AddDays(-retentionDays);
+        int deleted = 0;
+        foreach (var path in Directory.EnumerateFiles(logDirectory, "????-??-??.csv"))
+        {
+            if (!DateTime.TryParseExact(Path.GetFileNameWithoutExtension(path), "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+                continue;
+            if (date >= cutoff) continue;
+            try
+            {
+                File.Delete(path);
+                deleted++;
+            }
+            catch (Exception ex)
+            {
+                ErrorLog.Write("DeleteOldLogs", ex);
+            }
+        }
+        return deleted;
     }
 
     public static List<AppUsageSummary> Aggregate(
@@ -120,6 +166,36 @@ public static class LogAnalyzer
             .Select(g => new DailyUsage(g.Key, g.Count()))
             .OrderBy(d => d.Date)
             .ToList();
+    }
+
+    /// <summary>
+    /// Minutes per group for every day in [start, end] (days without data have no segments).
+    /// Segments are ordered by total usage over the whole range so stacks line up day to day.
+    /// </summary>
+    public static List<DailyStack> GetDailyStacks(
+        List<(DateTime Date, ActivityRecord Record)> records, DateTime start, DateTime end, bool includeIdle = false)
+    {
+        if (!includeIdle)
+            records = records.Where(r => !r.Record.IsIdle).ToList();
+
+        var order = records
+            .GroupBy(r => r.Record.ProcessName)
+            .OrderByDescending(g => g.Count())
+            .Select((g, i) => (g.Key, i))
+            .ToDictionary(x => x.Key, x => x.i);
+
+        var byDate = records.ToLookup(r => r.Date.Date);
+        var stacks = new List<DailyStack>();
+        for (var d = start.Date; d <= end.Date; d = d.AddDays(1))
+        {
+            var segments = byDate[d]
+                .GroupBy(r => r.Record.ProcessName)
+                .Select(g => new DailySegment(g.Key, g.Count()))
+                .OrderBy(s => order[s.ProcessName])
+                .ToList();
+            stacks.Add(new DailyStack(d, segments));
+        }
+        return stacks;
     }
 
     public static string GetPeriodLabel(DateTime referenceDate, AnalysisPeriod period)

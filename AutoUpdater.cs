@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using System.Windows;
 
@@ -13,6 +14,12 @@ public static class AutoUpdater
     private const string RepoApiUrl = "https://api.github.com/repos/sk0ya/Proc/releases/latest";
     private static Timer? _timer;
     private static readonly bool _isEnabled = DetectEnabled();
+
+    // Version the user declined in this session; not asked again until a newer one appears
+    private static Version? _declinedVersion;
+    private static int _checking;
+
+    private record UpdateInfo(Version Version, string ExeUrl, string HashUrl);
 
     private static bool DetectEnabled()
     {
@@ -34,62 +41,108 @@ public static class AutoUpdater
         _timer = new Timer(_ => _ = CheckAndPrompt(), null, interval, interval);
     }
 
+    /// <summary>Startup check: installs a newer release without asking (nothing is in progress yet).</summary>
     public static async Task<bool> CheckAndUpdate()
     {
         if (!_isEnabled) return false;
-        var result = await DownloadUpdate();
-        if (result == null) return false;
-        ApplyUpdate(result.Value.tempExe);
-        return true;
+        var info = await GetAvailableUpdate();
+        if (info == null) return false;
+        var tempExe = await DownloadAndVerify(info);
+        if (tempExe == null) return false;
+        return ApplyUpdate(tempExe);
     }
 
+    /// <summary>Periodic check while running: asks before restarting.</summary>
     private static async Task CheckAndPrompt()
     {
         if (!_isEnabled) return;
-        var result = await DownloadUpdate();
-        if (result == null) return;
-
-        Application.Current.Dispatcher.Invoke(() =>
+        if (Interlocked.Exchange(ref _checking, 1) == 1) return;
+        try
         {
-            ApplyUpdate(result.Value.tempExe);
-            Application.Current.Shutdown();
-        });
+            var info = await GetAvailableUpdate();
+            if (info == null || info.Version == _declinedVersion) return;
+
+            var accepted = Application.Current.Dispatcher.Invoke(() => MessageBox.Show(
+                $"Proc {info.Version} is available. Update and restart now?",
+                "Proc Update", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes);
+            if (!accepted)
+            {
+                _declinedVersion = info.Version;
+                return;
+            }
+
+            var tempExe = await DownloadAndVerify(info);
+            if (tempExe == null)
+            {
+                Application.Current.Dispatcher.Invoke(() => MessageBox.Show(
+                    "The update could not be downloaded or failed verification.",
+                    "Proc Update", MessageBoxButton.OK, MessageBoxImage.Warning));
+                return;
+            }
+
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (ApplyUpdate(tempExe))
+                    Application.Current.Shutdown();
+            });
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("Update.Periodic", ex);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _checking, 0);
+        }
     }
 
-    private static void ApplyUpdate(string tempExe)
+    private static bool ApplyUpdate(string tempExe)
     {
-        if (!_isEnabled) return;
+        if (!_isEnabled) return false;
         var currentExe = Environment.ProcessPath;
-        if (string.IsNullOrEmpty(currentExe)) return;
+        if (string.IsNullOrEmpty(currentExe)) return false;
 
-        var tempDir = Path.GetDirectoryName(tempExe)!;
-        var batPath = Path.Combine(tempDir, "update.bat");
-        var script = $"""
-            @echo off
-            timeout /t 2 /nobreak >nul
-            copy /y "{tempExe}" "{currentExe}" >nul
-            start "" "{currentExe}"
-            del "{tempExe}"
-            del "%~f0"
-            """;
-        File.WriteAllText(batPath, script);
-
-        Process.Start(new ProcessStartInfo
+        try
         {
-            FileName = batPath,
-            CreateNoWindow = true,
-            WindowStyle = ProcessWindowStyle.Hidden,
-        });
+            var tempDir = Path.GetDirectoryName(tempExe)!;
+            var batPath = Path.Combine(tempDir, "update.bat");
+            var script = $"""
+                @echo off
+                timeout /t 2 /nobreak >nul
+                copy /y "{tempExe}" "{currentExe}" >nul
+                start "" "{currentExe}"
+                del "{tempExe}"
+                del "%~f0"
+                """;
+            File.WriteAllText(batPath, script);
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = batPath,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+            })?.Dispose();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("Update.Apply", ex);
+            return false;
+        }
     }
 
-    private static async Task<(string tempExe, string version)?> DownloadUpdate()
+    private static HttpClient CreateClient(TimeSpan timeout)
+    {
+        var http = new HttpClient { Timeout = timeout };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("Proc-AutoUpdater");
+        return http;
+    }
+
+    private static async Task<UpdateInfo?> GetAvailableUpdate()
     {
         try
         {
-            using var http = new HttpClient();
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("Proc-AutoUpdater");
-            http.Timeout = TimeSpan.FromSeconds(10);
-
+            using var http = CreateClient(TimeSpan.FromSeconds(10));
             var release = await http.GetFromJsonAsync<GitHubRelease>(RepoApiUrl);
             if (release?.TagName == null || release.Assets == null || release.Assets.Length == 0)
                 return null;
@@ -99,24 +152,58 @@ public static class AutoUpdater
             if (remoteVersion == null || localVersion == null || remoteVersion <= localVersion)
                 return null;
 
-            var asset = Array.Find(release.Assets, a => a.Name?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true);
-            if (asset?.BrowserDownloadUrl == null)
+            var exe = Array.Find(release.Assets, a => a.Name?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true);
+            if (exe?.Name == null || exe.BrowserDownloadUrl == null)
                 return null;
 
-            var tempDir = Path.Combine(Path.GetTempPath(), "Proc_update");
-            Directory.CreateDirectory(tempDir);
-            var tempExe = Path.Combine(tempDir, "Proc.exe");
+            // Releases without a checksum are not installed
+            var hash = Array.Find(release.Assets, a =>
+                string.Equals(a.Name, exe.Name + ".sha256", StringComparison.OrdinalIgnoreCase));
+            if (hash?.BrowserDownloadUrl == null)
+                return null;
 
-            using (var stream = await http.GetStreamAsync(asset.BrowserDownloadUrl))
+            return new UpdateInfo(remoteVersion, exe.BrowserDownloadUrl, hash.BrowserDownloadUrl);
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("Update.Check", ex);
+            return null;
+        }
+    }
+
+    /// <summary>Downloads the exe and returns its path if its SHA256 matches the published checksum.</summary>
+    private static async Task<string?> DownloadAndVerify(UpdateInfo info)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "Proc_update");
+        var tempExe = Path.Combine(tempDir, "Proc.exe");
+        try
+        {
+            using var http = CreateClient(TimeSpan.FromMinutes(5));
+            var expected = (await http.GetStringAsync(info.HashUrl)).Trim().Split(' ', '\t', '\r', '\n')[0];
+
+            Directory.CreateDirectory(tempDir);
+            using (var stream = await http.GetStreamAsync(info.ExeUrl))
             using (var file = File.Create(tempExe))
             {
                 await stream.CopyToAsync(file);
             }
 
-            return (tempExe, release.TagName);
+            string actual;
+            using (var file = File.OpenRead(tempExe))
+                actual = Convert.ToHexString(await SHA256.HashDataAsync(file));
+
+            if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+            {
+                ErrorLog.Write("Update.Verify", new InvalidDataException($"SHA256 mismatch: expected {expected}, got {actual}"));
+                File.Delete(tempExe);
+                return null;
+            }
+            return tempExe;
         }
-        catch
+        catch (Exception ex)
         {
+            ErrorLog.Write("Update.Download", ex);
+            try { File.Delete(tempExe); } catch { }
             return null;
         }
     }

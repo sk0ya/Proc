@@ -1,10 +1,15 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace Proc;
+
+/// <summary>What the bars / timeline group by: apps, user categories, or browser sites.</summary>
+public enum GroupMode { App, Category, Site }
 
 public class AnalysisViewModel : INotifyPropertyChanged
 {
@@ -28,6 +33,8 @@ public class AnalysisViewModel : INotifyPropertyChanged
     private bool _hasData;
     private bool _hasDetail;
     private bool _showIdle = false;
+    private GroupMode _groupMode = GroupMode.App;
+    private List<DailyStack> _dailyStacks = [];
 
     private List<(DateTime Date, ActivityRecord Record)> _periodRecords = [];
     private List<(DateTime Date, ActivityRecord Record)>? _currentRecords;
@@ -170,6 +177,35 @@ public class AnalysisViewModel : INotifyPropertyChanged
         set { if (_showIdle != value) { _showIdle = value; OnPropertyChanged(nameof(ShowIdle)); Refresh(); } }
     }
 
+    public GroupMode GroupMode => _groupMode;
+
+    public bool IsAppMode => _groupMode == GroupMode.App;
+
+    public string GroupLabel => _groupMode switch
+    {
+        GroupMode.Category => "Category",
+        GroupMode.Site => "Site",
+        _ => "App"
+    };
+
+    public void SetGroupMode(GroupMode mode)
+    {
+        if (_groupMode == mode) return;
+        _groupMode = mode;
+        SelectedAppName = "";
+        OnPropertyChanged(nameof(GroupMode));
+        OnPropertyChanged(nameof(IsAppMode));
+        OnPropertyChanged(nameof(GroupLabel));
+        Refresh();
+    }
+
+    /// <summary>Per-day stacked usage for the Week / Month chart.</summary>
+    public List<DailyStack> DailyStacks
+    {
+        get => _dailyStacks;
+        private set { _dailyStacks = value; OnPropertyChanged(nameof(DailyStacks)); }
+    }
+
     public List<TimelineBlock> TimelineBlocks
     {
         get => _timelineBlocks;
@@ -289,9 +325,9 @@ public class AnalysisViewModel : INotifyPropertyChanged
     {
         var (start, end) = LogAnalyzer.GetDateRange(_referenceDate, _period);
         var allRecords = LogAnalyzer.ReadRecords(_logDirectory, start, end);
-        _periodRecords = _hiddenApps.Count == 0
+        _periodRecords = ApplyGrouping(_hiddenApps.Count == 0
             ? allRecords
-            : allRecords.Where(r => !_hiddenApps.Contains(r.Record.ProcessName)).ToList();
+            : allRecords.Where(r => !_hiddenApps.Contains(r.Record.ProcessName)).ToList());
 
         // Filter list: every app in the period (by time), then hidden apps not seen in this period
         var usage = LogAnalyzer.Aggregate(allRecords, int.MaxValue, _showIdle);
@@ -325,6 +361,11 @@ public class AnalysisViewModel : INotifyPropertyChanged
             TimelineBlocks = LogAnalyzer.BuildTimeline(_periodRecords, _showIdle);
         else
             TimelineBlocks = [];
+
+        // Stacked per-day chart for week / month views
+        DailyStacks = _period == AnalysisPeriod.Day
+            ? []
+            : LogAnalyzer.GetDailyStacks(_periodRecords, start, end, _showIdle);
 
         NotifyRangeChanged();
         ApplyRecords();
@@ -367,9 +408,10 @@ public class AnalysisViewModel : INotifyPropertyChanged
             s.ProcessName == selected
         )).ToList();
 
-        // Load icons asynchronously.
+        // Load icons asynchronously (only app names have icons).
         int iconLoadVersion = System.Threading.Interlocked.Increment(ref _iconLoadVersion);
-        _ = LoadIconsAsync(summaries.Select(s => s.ProcessName).ToList(), iconLoadVersion);
+        if (_groupMode == GroupMode.App)
+            _ = LoadIconsAsync(summaries.Select(s => s.ProcessName).ToList(), iconLoadVersion);
 
         if (summaries.Count > 0)
         {
@@ -384,6 +426,54 @@ public class AnalysisViewModel : INotifyPropertyChanged
             HasDetail = false;
         }
     }
+
+    /// <summary>
+    /// Re-labels records for the current group mode. The bars, timeline and details all group by
+    /// ProcessName, so Category / Site modes just put the category or site name there.
+    /// </summary>
+    private List<(DateTime Date, ActivityRecord Record)> ApplyGrouping(List<(DateTime Date, ActivityRecord Record)> records)
+    {
+        switch (_groupMode)
+        {
+            case GroupMode.Category:
+                var rules = CategoryRules.Parse(AppSettings.Load().CategoryRules);
+                return records.Select(r => r.Record.IsIdle ? r : (r.Date, r.Record with
+                {
+                    ProcessName = rules.Match(r.Record.ProcessName, r.Record.WindowTitle),
+                    WindowTitle = $"[{r.Record.ProcessName}] {r.Record.WindowTitle}"
+                })).ToList();
+
+            case GroupMode.Site:
+                // Only browser time; everything else is left out of this view
+                return records
+                    .Where(r => r.Record.IsIdle || SiteExtractor.IsBrowser(r.Record.ProcessName))
+                    .Select(r => r.Record.IsIdle ? r : (r.Date, r.Record with
+                    {
+                        ProcessName = SiteExtractor.Extract(r.Record.WindowTitle)
+                    })).ToList();
+
+            default:
+                return records;
+        }
+    }
+
+    /// <summary>Writes the current view (period, time range, filters, grouping) to a CSV or Markdown file.</summary>
+    public void Export(string path)
+    {
+        var summaries = LogAnalyzer.Aggregate(_currentRecords ?? [], int.MaxValue, _showIdle);
+        var content = path.EndsWith(".md", StringComparison.OrdinalIgnoreCase)
+            ? ReportExporter.ToMarkdown(summaries, GroupLabel, PeriodLabel + RangeSuffix())
+            : ReportExporter.ToCsv(summaries, GroupLabel);
+        // UTF-8 with BOM so Excel opens Japanese titles correctly
+        File.WriteAllText(path, content, Encoding.UTF8);
+    }
+
+    public string ExportFileName => _period switch
+    {
+        AnalysisPeriod.Week => $"proc-{LogAnalyzer.GetDateRange(_referenceDate, _period).Start:yyyy-MM-dd}-week",
+        AnalysisPeriod.Month => $"proc-{_referenceDate:yyyy-MM}",
+        _ => $"proc-{_referenceDate:yyyy-MM-dd}"
+    };
 
     private async Task LoadIconsAsync(List<string> processNames, int iconLoadVersion)
     {

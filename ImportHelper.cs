@@ -9,7 +9,8 @@ public static class ImportHelper
     /// <summary>
     /// Imports records from an external quoted CSV and merges into Proc's daily log files.
     /// Expected columns: Name, Start, End, Duration, Process
-    /// Existing Proc records take priority on duplicate timestamps.
+    /// Existing Proc records take priority: an imported minute is skipped when the day's
+    /// log already has a record in that minute (Proc's own records carry seconds).
     /// </summary>
     public static int Import(string importFilePath, string logDir)
     {
@@ -23,7 +24,7 @@ public static class ImportHelper
             var line = lines[i];
             if (string.IsNullOrWhiteSpace(line)) continue;
 
-            var parts = ParseCsvLine(line);
+            var parts = CsvUtil.ParseLine(line);
             if (parts.Count < 5) continue;
 
             var windowTitle = parts[0].Trim();
@@ -54,8 +55,8 @@ public static class ImportHelper
         {
             var filePath = Path.Combine(logDir, $"{date:yyyy-MM-dd}.csv");
 
-            // Load existing records and collect their timestamps
-            var existingTimestamps = new HashSet<string>();
+            // Load existing records and collect the minutes they cover
+            var existingMinutes = new HashSet<string>();
             var existingLines = new List<string>();
             if (File.Exists(filePath))
             {
@@ -63,9 +64,8 @@ public static class ImportHelper
                 {
                     if (string.IsNullOrWhiteSpace(eline)) continue;
                     existingLines.Add(eline);
-                    var comma = eline.IndexOf(',');
-                    if (comma > 0)
-                        existingTimestamps.Add(eline[..comma]);
+                    if (TryGetMinuteKey(eline, out var minuteKey))
+                        existingMinutes.Add(minuteKey);
                 }
             }
 
@@ -73,11 +73,10 @@ public static class ImportHelper
             int added = 0;
             foreach (var record in importedRecords)
             {
-                var timeKey = record.Timestamp.ToString("HH:mm:ss");
-                if (!existingTimestamps.Contains(timeKey))
+                var minuteKey = record.Timestamp.ToString("HH:mm", CultureInfo.InvariantCulture);
+                if (existingMinutes.Add(minuteKey))
                 {
                     existingLines.Add(record.ToCsvLine());
-                    existingTimestamps.Add(timeKey);
                     added++;
                 }
             }
@@ -93,46 +92,16 @@ public static class ImportHelper
         return totalImported;
     }
 
-    private static List<string> ParseCsvLine(string line)
+    /// <summary>Gets "HH:mm" from a log line's leading "HH:mm:ss" timestamp.</summary>
+    private static bool TryGetMinuteKey(string logLine, out string minuteKey)
     {
-        var result = new List<string>();
-        bool inQuote = false;
-        var current = new StringBuilder();
-        for (int i = 0; i < line.Length; i++)
-        {
-            char c = line[i];
-            if (inQuote)
-            {
-                if (c == '"')
-                {
-                    if (i + 1 < line.Length && line[i + 1] == '"')
-                    {
-                        current.Append('"');
-                        i++;
-                    }
-                    else
-                    {
-                        inQuote = false;
-                    }
-                }
-                else
-                {
-                    current.Append(c);
-                }
-            }
-            else
-            {
-                if (c == '"') inQuote = true;
-                else if (c == ',')
-                {
-                    result.Add(current.ToString());
-                    current.Clear();
-                }
-                else current.Append(c);
-            }
-        }
-        result.Add(current.ToString());
-        return result;
+        minuteKey = "";
+        var comma = logLine.IndexOf(',');
+        if (comma <= 0) return false;
+        if (!TimeSpan.TryParseExact(logLine[..comma], [@"hh\:mm\:ss", @"h\:mm\:ss"], CultureInfo.InvariantCulture, out var time))
+            return false;
+        minuteKey = $"{time.Hours:D2}:{time.Minutes:D2}";
+        return true;
     }
 
     private static bool TryParseDateTime(string s, out DateTime result)

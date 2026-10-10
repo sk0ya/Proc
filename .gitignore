@@ -1,4 +1,8 @@
 bin/
 obj/
 .vs/
+.idea/
 *.user
+publish/
+publish_release/
+*.zip

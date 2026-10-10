@@ -42,14 +42,15 @@ public partial class MainWindow : Window
         ToggleTitleMenu.IsChecked = _showTitle;
 
         _logger = new ActivityLogger();
-        _logger.OnRecorded += () => Dispatcher.Invoke(() =>
+        // BeginInvoke: the logger raises these from timer threads and must not wait on the UI
+        _logger.OnRecorded += () => Dispatcher.BeginInvoke(() =>
         {
             RefreshList();
             if (_analysisWindow is { IsLoaded: true })
                 _analysisWindow.Refresh();
         });
-        _logger.OnActiveChanged += () => Dispatcher.Invoke(RefreshList);
-        _logger.OnIdleChanged += isIdle => Dispatcher.Invoke(() => ApplyIdleVisibility(isIdle));
+        _logger.OnActiveChanged += () => Dispatcher.BeginInvoke(RefreshList);
+        _logger.OnIdleChanged += isIdle => Dispatcher.BeginInvoke(() => ApplyIdleVisibility(isIdle));
 
         Loaded += (_, _) =>
         {
@@ -67,13 +68,6 @@ public partial class MainWindow : Window
                 Left = area.Right - ActualWidth;
                 Top = area.Bottom - ActualHeight;
             }
-
-            LocationChanged += (_, _) =>
-            {
-                _settings.WindowLeft = Left;
-                _settings.WindowTop = Top;
-                AppSettings.Update(s => { s.WindowLeft = Left; s.WindowTop = Top; });
-            };
         };
 
         RefreshList();
@@ -279,6 +273,12 @@ public partial class MainWindow : Window
             _settingsWindow = new SettingsWindow(_showTitle, _showWhenIdle);
             _settingsWindow.ShowTitleChanged += SetShowTitle;
             _settingsWindow.ShowWhenIdleChanged += SetShowWhenIdle;
+            _settingsWindow.PrivacyChanged += _logger.ReloadSettings;
+            _settingsWindow.CategoriesChanged += () =>
+            {
+                if (_analysisWindow is { IsLoaded: true })
+                    _analysisWindow.Refresh();
+            };
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         }
         _settingsWindow.Show();
@@ -297,6 +297,7 @@ public partial class MainWindow : Window
             try
             {
                 int count = ImportHelper.Import(dlg.FileName, _logger.LogDirectory);
+                _logger.InvalidateCache();
                 MessageBox.Show(this, $"{count} records imported.", "Import", MessageBoxButton.OK, MessageBoxImage.Information);
                 RefreshList();
                 if (_analysisWindow is { IsLoaded: true })
@@ -304,6 +305,7 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
+                ErrorLog.Write("Import", ex);
                 MessageBox.Show(this, $"Import failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -312,13 +314,21 @@ public partial class MainWindow : Window
     private void Exit_Click(object sender, RoutedEventArgs e)
     {
         TrayIcon.Dispose();
+        _logger.Dispose();
         Application.Current.Shutdown();
     }
 
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount == 1)
-            DragMove();
+        if (e.ClickCount != 1) return;
+
+        // DragMove blocks until the button is released; save once instead of on every pixel moved
+        var (left, top) = (Left, Top);
+        DragMove();
+        if (Left == left && Top == top) return;
+        _settings.WindowLeft = Left;
+        _settings.WindowTop = Top;
+        AppSettings.Update(s => { s.WindowLeft = Left; s.WindowTop = Top; });
     }
 
     private void Window_MouseDoubleClick(object sender, MouseButtonEventArgs e)
