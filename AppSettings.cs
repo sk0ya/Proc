@@ -16,6 +16,18 @@ public class AppSettings
     public double? WindowTop { get; set; }
     public string BgColor { get; set; } = "#1E1E1E";
     public string AccentColor { get; set; } = "#FF8C00";
+    public List<string> HiddenApps { get; set; } = [];
+
+    /// <summary>
+    /// Loads the latest settings from disk, applies the change and saves, so that
+    /// windows holding older instances don't overwrite each other's changes.
+    /// </summary>
+    public static void Update(Action<AppSettings> change)
+    {
+        var settings = Load();
+        change(settings);
+        settings.Save();
+    }
 
     public void Save()
     {

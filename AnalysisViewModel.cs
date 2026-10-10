@@ -29,13 +29,72 @@ public class AnalysisViewModel : INotifyPropertyChanged
     private bool _hasDetail;
     private bool _showIdle = false;
 
+    private List<(DateTime Date, ActivityRecord Record)> _periodRecords = [];
     private List<(DateTime Date, ActivityRecord Record)>? _currentRecords;
+    private TimeSpan? _rangeStart;
+    private TimeSpan? _rangeEnd;
     private int _iconLoadVersion;
+
+    // Apps excluded from the analysis (persisted in settings)
+    private readonly HashSet<string> _hiddenApps;
+    private List<AppFilterItem> _appFilterItems = [];
+    private string _appFilterQuery = "";
 
     public AnalysisViewModel(string logDirectory)
     {
         _logDirectory = logDirectory;
         _dispatcher = Application.Current.Dispatcher;
+        _hiddenApps = new HashSet<string>(AppSettings.Load().HiddenApps, StringComparer.OrdinalIgnoreCase);
+        Refresh();
+    }
+
+    /// <summary>All apps of the period (plus hidden ones) for the filter popup, narrowed by the query.</summary>
+    public List<AppFilterItem> AppFilterItems => string.IsNullOrWhiteSpace(_appFilterQuery)
+        ? _appFilterItems
+        : _appFilterItems.Where(a => a.ProcessName.Contains(_appFilterQuery.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+
+    public string AppFilterQuery
+    {
+        get => _appFilterQuery;
+        set { _appFilterQuery = value; OnPropertyChanged(nameof(AppFilterQuery)); OnPropertyChanged(nameof(AppFilterItems)); }
+    }
+
+    public string FilterButtonText => _hiddenApps.Count > 0 ? $"Filter ({_hiddenApps.Count} hidden)" : "Filter";
+
+    public bool HasHiddenApps => _hiddenApps.Count > 0;
+
+    public void SetAppVisible(string processName, bool visible)
+    {
+        bool changed = visible ? _hiddenApps.Remove(processName) : _hiddenApps.Add(processName);
+        if (changed) SaveHiddenAppsAndRefresh();
+    }
+
+    public void ShowAllApps()
+    {
+        if (_hiddenApps.Count == 0) return;
+        _hiddenApps.Clear();
+        SaveHiddenAppsAndRefresh();
+    }
+
+    /// <summary>Hides every app of the current period except the given one.</summary>
+    public void ShowOnlyApp(string processName)
+    {
+        foreach (var item in _appFilterItems)
+        {
+            if (string.Equals(item.ProcessName, processName, StringComparison.OrdinalIgnoreCase))
+                _hiddenApps.Remove(item.ProcessName);
+            else
+                _hiddenApps.Add(item.ProcessName);
+        }
+        SaveHiddenAppsAndRefresh();
+    }
+
+    private void SaveHiddenAppsAndRefresh()
+    {
+        var hidden = _hiddenApps.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        AppSettings.Update(s => s.HiddenApps = hidden);
+        OnPropertyChanged(nameof(FilterButtonText));
+        OnPropertyChanged(nameof(HasHiddenApps));
         Refresh();
     }
 
@@ -129,28 +188,74 @@ public class AnalysisViewModel : INotifyPropertyChanged
         private set { _isDayView = value; OnPropertyChanged(nameof(IsDayView)); }
     }
 
+    /// <summary>Start of the time-of-day range selected on the Day timeline (inclusive).</summary>
+    public TimeSpan? RangeStart => _rangeStart;
+
+    /// <summary>End of the time-of-day range selected on the Day timeline (exclusive).</summary>
+    public TimeSpan? RangeEnd => _rangeEnd;
+
+    public bool HasTimeRange => _rangeStart.HasValue && _rangeEnd.HasValue;
+
+    /// <summary>Selected range as text for headers, e.g. "10:15 - 11:40"; empty when none.</summary>
+    public string RangeText => HasTimeRange
+        ? $"{LogAnalyzer.FormatClock(_rangeStart!.Value)} - {LogAnalyzer.FormatClock(_rangeEnd!.Value)}"
+        : "";
+
+    private void NotifyRangeChanged()
+    {
+        OnPropertyChanged(nameof(HasTimeRange));
+        OnPropertyChanged(nameof(RangeText));
+    }
+
     public void SetPeriod(AnalysisPeriod period)
     {
         Period = period;
+        ResetTimeRange();
         Refresh();
     }
 
     public void NavigatePrevious()
     {
         ReferenceDate = LogAnalyzer.Navigate(_referenceDate, _period, -1);
+        ResetTimeRange();
         Refresh();
     }
 
     public void NavigateNext()
     {
         ReferenceDate = LogAnalyzer.Navigate(_referenceDate, _period, 1);
+        ResetTimeRange();
         Refresh();
     }
 
     public void NavigateToday()
     {
         ReferenceDate = DateTime.Today;
+        ResetTimeRange();
         Refresh();
+    }
+
+    public void SetTimeRange(TimeSpan start, TimeSpan end)
+    {
+        if (_period != AnalysisPeriod.Day || end <= start) return;
+        _rangeStart = start;
+        _rangeEnd = end;
+        NotifyRangeChanged();
+        ApplyRecords();
+    }
+
+    public void ClearTimeRange()
+    {
+        if (!HasTimeRange) return;
+        ResetTimeRange();
+        NotifyRangeChanged();
+        ApplyRecords();
+    }
+
+    private void ResetTimeRange()
+    {
+        _rangeStart = null;
+        _rangeEnd = null;
     }
 
     public void SelectApp(string processName)
@@ -176,59 +281,101 @@ public class AnalysisViewModel : INotifyPropertyChanged
     public void SetDate(DateTime date)
     {
         ReferenceDate = date;
+        ResetTimeRange();
         Refresh();
     }
 
     public void Refresh()
     {
         var (start, end) = LogAnalyzer.GetDateRange(_referenceDate, _period);
-        _currentRecords = LogAnalyzer.ReadRecords(_logDirectory, start, end);
-        var summaries = LogAnalyzer.Aggregate(_currentRecords, includeIdle: _showIdle);
+        var allRecords = LogAnalyzer.ReadRecords(_logDirectory, start, end);
+        _periodRecords = _hiddenApps.Count == 0
+            ? allRecords
+            : allRecords.Where(r => !_hiddenApps.Contains(r.Record.ProcessName)).ToList();
+
+        // Filter list: every app in the period (by time), then hidden apps not seen in this period
+        var usage = LogAnalyzer.Aggregate(allRecords, int.MaxValue, _showIdle);
+        _appFilterItems = usage
+            .Select(u => new AppFilterItem(u.ProcessName, LogAnalyzer.FormatTime(u.TotalMinutes),
+                !_hiddenApps.Contains(u.ProcessName)))
+            .Concat(_hiddenApps
+                .Where(h => !usage.Any(u => string.Equals(u.ProcessName, h, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(h => h, StringComparer.OrdinalIgnoreCase)
+                .Select(h => new AppFilterItem(h, "-", false)))
+            .ToList();
+        OnPropertyChanged(nameof(AppFilterItems));
 
         PeriodLabel = LogAnalyzer.GetPeriodLabel(_referenceDate, _period);
+        IsDayView = _period == AnalysisPeriod.Day;
+
+        // Build process -> color map from the whole period so colors stay stable
+        // while a time range is selected (consistent across bar chart and timeline)
+        var periodSummaries = LogAnalyzer.Aggregate(_periodRecords, includeIdle: _showIdle);
+        var colorMap = new Dictionary<string, SolidColorBrush>();
+        for (int i = 0; i < periodSummaries.Count; i++)
+        {
+            var brush = new SolidColorBrush(BarPalette.GetColor(i));
+            brush.Freeze();
+            colorMap[periodSummaries[i].ProcessName] = brush;
+        }
+        ProcessColors = colorMap;
+
+        // Build timeline for day view (always the whole day, regardless of range)
+        if (_period == AnalysisPeriod.Day && _periodRecords.Count > 0)
+            TimelineBlocks = LogAnalyzer.BuildTimeline(_periodRecords, _showIdle);
+        else
+            TimelineBlocks = [];
+
+        NotifyRangeChanged();
+        ApplyRecords();
+    }
+
+    /// <summary>
+    /// Recomputes bars, totals and details from the period records, filtered by the
+    /// selected time range if any. Keeps the current app selection when still present.
+    /// </summary>
+    private void ApplyRecords()
+    {
+        _currentRecords = HasTimeRange
+            ? _periodRecords.Where(r =>
+            {
+                var t = r.Record.Timestamp.TimeOfDay;
+                return t >= _rangeStart!.Value && t < _rangeEnd!.Value;
+            }).ToList()
+            : _periodRecords;
+
+        var summaries = LogAnalyzer.Aggregate(_currentRecords, includeIdle: _showIdle);
+
         int totalMinutes = summaries.Sum(s => s.TotalMinutes);
         TotalTimeText = $"Total: {LogAnalyzer.FormatTime(totalMinutes)}";
         TopAppText = summaries.Count > 0 ? $"Top: {summaries[0].ProcessName}" : "No data";
         HasData = summaries.Count > 0;
-        IsDayView = _period == AnalysisPeriod.Day;
 
-        // Build process -> color map (consistent across bar chart and timeline)
-        var colorMap = new Dictionary<string, SolidColorBrush>();
-        for (int i = 0; i < summaries.Count; i++)
-        {
-            var brush = new SolidColorBrush(BarPalette.GetColor(i));
-            brush.Freeze();
-            colorMap[summaries[i].ProcessName] = brush;
-        }
-        ProcessColors = colorMap;
+        var fallbackBrush = new SolidColorBrush(BarPalette.GetColor(15));
+        fallbackBrush.Freeze();
 
         int maxMinutes = summaries.Count > 0 ? summaries.Max(s => s.TotalMinutes) : 1;
-        var firstApp = summaries.Count > 0 ? summaries[0].ProcessName : "";
+        var selected = summaries.Any(s => s.ProcessName == _selectedAppName) ? _selectedAppName : "";
 
-        AppBars = summaries.Select((s, i) => new AppBarItem(
+        AppBars = summaries.Select(s => new AppBarItem(
             s.ProcessName,
             LogAnalyzer.FormatTime(s.TotalMinutes),
             $"{s.Percentage}%",
             s.TotalMinutes / (double)maxMinutes,
-            colorMap[s.ProcessName],
+            _processColors.TryGetValue(s.ProcessName, out var brush) ? brush : fallbackBrush,
             null,
-            s.ProcessName == firstApp
+            s.ProcessName == selected
         )).ToList();
 
         // Load icons asynchronously.
         int iconLoadVersion = System.Threading.Interlocked.Increment(ref _iconLoadVersion);
         _ = LoadIconsAsync(summaries.Select(s => s.ProcessName).ToList(), iconLoadVersion);
 
-        // Build timeline for day view
-        if (_period == AnalysisPeriod.Day && _currentRecords.Count > 0)
-            TimelineBlocks = LogAnalyzer.BuildTimeline(_currentRecords, _showIdle);
-        else
-            TimelineBlocks = [];
-
         if (summaries.Count > 0)
         {
-            SelectedAppName = "";
-            RefreshDetailAll();
+            SelectedAppName = selected;
+            if (selected == "") RefreshDetailAll();
+            else RefreshDetail(selected);
         }
         else
         {
@@ -295,7 +442,7 @@ public class AnalysisViewModel : INotifyPropertyChanged
 
         if (summary != null)
         {
-            DetailHeader = $"{processName} - {LogAnalyzer.FormatTime(summary.TotalMinutes)}";
+            DetailHeader = $"{processName} - {LogAnalyzer.FormatTime(summary.TotalMinutes)}{RangeSuffix()}";
             items.Add(new DetailItem("Window Titles", "", true));
             foreach (var title in summary.TitleBreakdown.Take(20))
             {
@@ -333,7 +480,7 @@ public class AnalysisViewModel : INotifyPropertyChanged
         var items = new List<DetailItem>();
         var summaries = LogAnalyzer.Aggregate(_currentRecords, int.MaxValue, _showIdle);
         int allTotal = summaries.Sum(s => s.TotalMinutes);
-        DetailHeader = $"All Apps - {LogAnalyzer.FormatTime(allTotal)}";
+        DetailHeader = $"All Apps - {LogAnalyzer.FormatTime(allTotal)}{RangeSuffix()}";
 
         // All window titles across all apps, grouped by process then title
         foreach (var summary in summaries)
@@ -353,6 +500,11 @@ public class AnalysisViewModel : INotifyPropertyChanged
         HasDetail = items.Count > 0;
     }
 
+    private string RangeSuffix() =>
+        HasTimeRange
+            ? $"  [{LogAnalyzer.FormatClock(_rangeStart!.Value)}-{LogAnalyzer.FormatClock(_rangeEnd!.Value)}]"
+            : "";
+
     private void OnPropertyChanged(string name) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
@@ -365,6 +517,8 @@ public record AppBarItem(
     SolidColorBrush BarBrush,
     ImageSource? Icon,
     bool IsSelected);
+
+public record AppFilterItem(string ProcessName, string TimeText, bool IsVisible);
 
 public record DetailItem(string Label, string Value, bool IsHeader);
 

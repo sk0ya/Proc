@@ -154,6 +154,53 @@
             </Setter>
         </Style>
 
+        <!-- Dark context menu (app rows) -->
+        <Style x:Key="DarkContextMenu" TargetType="ContextMenu">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="HasDropShadow" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{DynamicResource ThemeSurface}"
+                                BorderBrush="{DynamicResource ThemeCheckBorder}" BorderThickness="1"
+                                Padding="3">
+                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="DarkMenuItem" TargetType="MenuItem">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Bd" Background="Transparent" Padding="14,5" CornerRadius="2">
+                            <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeHover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="DarkSeparator" TargetType="Separator">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Separator">
+                        <Border Height="1" Margin="6,3" Background="{DynamicResource ThemeBorder}"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="PeriodButton" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource ThemeSubText}"/>
             <Setter Property="FontFamily" Value="Consolas"/>
@@ -266,15 +313,37 @@
                 BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="0,0,0,1"
                 Visibility="{Binding IsDayView, Converter={StaticResource BoolToVis}}">
             <DockPanel>
-                <TextBlock DockPanel.Dock="Top" Text="Timeline"
-                           Style="{StaticResource HeaderText}" Margin="0,0,0,4" FontSize="12"/>
-                <Grid Height="36">
-                    <!-- Hour labels -->
-                    <Canvas x:Name="TimelineHourLabels" Height="12" VerticalAlignment="Bottom"/>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                    <TextBlock Text="Timeline" Style="{StaticResource HeaderText}" FontSize="12"
+                               VerticalAlignment="Center"/>
+                    <Border x:Name="ClearRangeButton" DockPanel.Dock="Right" Padding="8,1" CornerRadius="3"
+                            Cursor="Hand" Visibility="Collapsed" VerticalAlignment="Center"
+                            Background="{DynamicResource ThemeSurface}"
+                            BorderBrush="{DynamicResource ThemeCheckBorder}" BorderThickness="1"
+                            MouseLeftButtonDown="ClearRange_Click" ToolTip="Clear range (Esc)">
+                        <TextBlock Text="&#xD7; Clear" FontFamily="Consolas" FontSize="11"
+                                   Foreground="{DynamicResource ThemeSubText}"/>
+                    </Border>
+                    <TextBlock x:Name="RangeLabel" DockPanel.Dock="Right" HorizontalAlignment="Right"
+                               FontFamily="Consolas" FontSize="11" Margin="0,0,8,0"
+                               VerticalAlignment="Center"/>
+                </DockPanel>
+                <!-- Whole area (blocks + hour labels) accepts drag / click -->
+                <Grid x:Name="TimelineArea" Height="56" Background="Transparent" Cursor="IBeam"
+                      MouseLeftButtonDown="TimelineArea_MouseLeftButtonDown"
+                      MouseMove="TimelineArea_MouseMove"
+                      MouseLeftButtonUp="TimelineArea_MouseLeftButtonUp"
+                      MouseLeave="TimelineArea_MouseLeave"
+                      LostMouseCapture="TimelineArea_LostMouseCapture">
+                    <!-- Hour labels (click to select that hour) -->
+                    <Canvas x:Name="TimelineHourLabels" Height="16" VerticalAlignment="Bottom"
+                            Background="Transparent" Cursor="Hand"/>
                     <!-- Activity blocks -->
-                    <Canvas x:Name="TimelineCanvas" Height="22" VerticalAlignment="Top"
-                            Background="{DynamicResource ThemeSurfaceAlt}" ClipToBounds="True"
+                    <Canvas x:Name="TimelineCanvas" Height="38" VerticalAlignment="Top"
+                            Background="{DynamicResource ThemeSurface}" ClipToBounds="True"
                             SizeChanged="TimelineCanvas_SizeChanged"/>
+                    <!-- Hover cursor line + time readout -->
+                    <Canvas x:Name="TimelineHover" IsHitTestVisible="False"/>
                 </Grid>
             </DockPanel>
         </Border>
@@ -292,14 +361,88 @@
                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                     <TextBlock Text="Application Usage"
                                Style="{StaticResource HeaderText}"/>
-                    <Border x:Name="AllButton" DockPanel.Dock="Right" HorizontalAlignment="Right"
-                            Padding="10,3" CornerRadius="3" Cursor="Hand"
-                            Background="{DynamicResource ThemeSurfaceAlt}"
-                            BorderBrush="{DynamicResource ThemeCheckBorder}" BorderThickness="1"
-                            MouseLeftButtonDown="AllButton_Click">
-                        <TextBlock Text="All" FontFamily="Consolas" FontSize="12"
-                                   Foreground="{DynamicResource ThemeSubText}"/>
-                    </Border>
+                    <TextBlock Text="{Binding RangeText}" Style="{StaticResource HeaderText}"
+                               FontWeight="Normal" Margin="8,0,0,0"/>
+                    <StackPanel x:Name="FilterBar" SizeChanged="FilterBar_SizeChanged" DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <!-- App filter (hide / show apps) -->
+                        <Border x:Name="FilterButton" Padding="10,3" CornerRadius="3" Cursor="Hand"
+                                Background="{DynamicResource ThemeSurfaceAlt}" BorderThickness="1"
+                                Margin="0,0,6,0" MouseLeftButtonUp="FilterButton_Click"
+                                ToolTip="Choose which apps to show">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="BorderBrush" Value="{DynamicResource ThemeCheckBorder}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasHiddenApps}" Value="True">
+                                            <Setter Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="{Binding FilterButtonText}" FontFamily="Consolas" FontSize="12">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource ThemeSubText}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasHiddenApps}" Value="True">
+                                                <Setter Property="Foreground" Value="{DynamicResource ThemeAccent}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Border>
+                        <Border x:Name="AllButton" Padding="10,3" CornerRadius="3" Cursor="Hand"
+                                Background="{DynamicResource ThemeSurfaceAlt}"
+                                BorderBrush="{DynamicResource ThemeCheckBorder}" BorderThickness="1"
+                                MouseLeftButtonDown="AllButton_Click">
+                            <TextBlock Text="All" FontFamily="Consolas" FontSize="12"
+                                       Foreground="{DynamicResource ThemeSubText}"/>
+                        </Border>
+                        <!-- Right-aligned to the button group so it doesn't shift when the label changes -->
+                        <Popup x:Name="FilterPopup" StaysOpen="False" AllowsTransparency="True"
+                               PlacementTarget="{Binding ElementName=FilterBar}" Placement="Relative">
+                            <Border Background="{DynamicResource ThemeSurface}" Width="280"
+                                    BorderBrush="{DynamicResource ThemeCheckBorder}" BorderThickness="1"
+                                    CornerRadius="4" Padding="8">
+                                <DockPanel>
+                                    <TextBox x:Name="FilterSearchBox" DockPanel.Dock="Top"
+                                             Text="{Binding AppFilterQuery, UpdateSourceTrigger=PropertyChanged}"
+                                             FontFamily="Consolas" FontSize="12" Padding="4,2" Margin="0,0,0,6"
+                                             Background="{DynamicResource ThemeSurfaceAlt}"
+                                             Foreground="{DynamicResource ThemeText}"
+                                             CaretBrush="{DynamicResource ThemeText}"
+                                             BorderBrush="{DynamicResource ThemeCheckBorder}"
+                                             ToolTip="Search apps"/>
+                                    <Button DockPanel.Dock="Bottom" Content="Show all apps"
+                                            Style="{StaticResource NavButton}" Margin="0,6,0,0"
+                                            Click="ShowAllApps_Click"/>
+                                    <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{Binding AppFilterItems}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <DockPanel Margin="0,1">
+                                                        <TextBlock DockPanel.Dock="Right" Text="{Binding TimeText}"
+                                                                   Foreground="{DynamicResource ThemeDimText}"
+                                                                   FontFamily="Consolas" FontSize="11"
+                                                                   VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                                        <CheckBox IsChecked="{Binding IsVisible, Mode=OneWay}"
+                                                                  Click="AppFilterCheckBox_Click"
+                                                                  Foreground="{DynamicResource ThemeText}"
+                                                                  FontFamily="Consolas" FontSize="12"
+                                                                  VerticalContentAlignment="Center" Cursor="Hand">
+                                                            <TextBlock Text="{Binding ProcessName}"
+                                                                       TextTrimming="CharacterEllipsis"/>
+                                                        </CheckBox>
+                                                    </DockPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+                        </Popup>
+                    </StackPanel>
                 </DockPanel>
 
                 <!-- No data placeholder -->
@@ -316,6 +459,17 @@
                                 <Border x:Name="BarRow" Padding="6,4" Cursor="Hand"
                                         Background="Transparent" CornerRadius="3"
                                         MouseLeftButtonDown="AppBar_Click" Margin="0,1">
+                                    <Border.ContextMenu>
+                                        <ContextMenu Style="{StaticResource DarkContextMenu}">
+                                            <MenuItem Header="Hide this app" Click="HideApp_Click"
+                                                      Style="{StaticResource DarkMenuItem}"/>
+                                            <MenuItem Header="Show only this app" Click="ShowOnlyApp_Click"
+                                                      Style="{StaticResource DarkMenuItem}"/>
+                                            <Separator Style="{StaticResource DarkSeparator}"/>
+                                            <MenuItem Header="Show all apps" Click="ShowAllApps_Click"
+                                                      Style="{StaticResource DarkMenuItem}"/>
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="20"/>

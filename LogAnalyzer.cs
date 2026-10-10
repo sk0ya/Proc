@@ -194,6 +194,10 @@ public static class LogAnalyzer
         return blocks;
     }
 
+    /// <summary>Formats a time of day as HH:mm (24:00 for end of day).</summary>
+    public static string FormatClock(TimeSpan time) =>
+        $"{(int)time.TotalHours:D2}:{time.Minutes:D2}";
+
     public static string FormatTime(int minutes)
     {
         if (minutes >= 60)

@@ -13,6 +13,23 @@ public partial class AnalysisWindow : Window
 {
     private readonly AnalysisViewModel _vm;
 
+    // Timeline geometry from the last render (used to map x <-> time of day)
+    private TimeSpan _timelineStart;
+    private double _timelineMinutes;
+
+    // Drag-to-select state
+    private const double DragThreshold = 3;
+    private Point? _dragOrigin;
+    private TimelineBlock? _dragOriginBlock;
+    private bool _isDragging;
+    private const double EdgeGrabWidth = 8;
+    private const double HandleWidth = 6;
+    private static readonly object SelectionTag = new();
+
+    // Hover cursor line + time readout
+    private Line? _hoverLine;
+    private TextBlock? _hoverLabel;
+
     public AnalysisWindow(string logDirectory)
     {
         InitializeComponent();
@@ -27,7 +44,9 @@ public partial class AnalysisWindow : Window
     {
         if (e.PropertyName is nameof(AnalysisViewModel.TimelineBlocks)
             or nameof(AnalysisViewModel.ProcessColors)
-            or nameof(AnalysisViewModel.IsDayView))
+            or nameof(AnalysisViewModel.IsDayView)
+            or nameof(AnalysisViewModel.HasTimeRange)
+            or nameof(AnalysisViewModel.SelectedAppName))
         {
             RenderTimeline();
         }
@@ -72,6 +91,47 @@ public partial class AnalysisWindow : Window
         _vm.SelectAll();
     }
 
+    private void FilterButton_Click(object sender, MouseButtonEventArgs e)
+    {
+        // Opened on mouse-up: a StaysOpen=False popup opened on mouse-down is closed again immediately
+        _vm.AppFilterQuery = "";
+        PositionFilterPopup();
+        FilterPopup.IsOpen = true;
+        FilterSearchBox.Focus();
+        e.Handled = true;
+    }
+
+    // The button label ("Filter (2 hidden)") changes width; keep the popup pinned to the right edge
+    private void FilterBar_SizeChanged(object sender, SizeChangedEventArgs e) => PositionFilterPopup();
+
+    /// <summary>Aligns the popup's right edge with the right edge of the Filter / All buttons.</summary>
+    private void PositionFilterPopup()
+    {
+        double popupWidth = ((FrameworkElement)FilterPopup.Child).Width;
+        FilterPopup.HorizontalOffset = FilterBar.ActualWidth - popupWidth;
+        FilterPopup.VerticalOffset = FilterBar.ActualHeight + 2;
+    }
+
+    private void AppFilterCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { DataContext: AppFilterItem item } cb)
+            _vm.SetAppVisible(item.ProcessName, cb.IsChecked == true);
+    }
+
+    private void ShowAllApps_Click(object sender, RoutedEventArgs e) => _vm.ShowAllApps();
+
+    private void HideApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: AppBarItem item } && item.ProcessName != "Other")
+            _vm.SetAppVisible(item.ProcessName, false);
+    }
+
+    private void ShowOnlyApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: AppBarItem item } && item.ProcessName != "Other")
+            _vm.ShowOnlyApp(item.ProcessName);
+    }
+
     private void AppBar_Click(object sender, MouseButtonEventArgs e)
     {
         if (sender is FrameworkElement fe && fe.DataContext is AppBarItem item)
@@ -96,10 +156,14 @@ public partial class AnalysisWindow : Window
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
+        // Let text input (filter search box) handle its own keys
+        if (e.OriginalSource is TextBox) return;
+
         switch (e.Key)
         {
             case Key.Escape:
-                Close();
+                if (_vm.HasTimeRange) _vm.ClearTimeRange();
+                else Close();
                 break;
             case Key.Left:
                 _vm.NavigatePrevious();
@@ -115,10 +179,224 @@ public partial class AnalysisWindow : Window
         RenderTimeline();
     }
 
+    private void ClearRange_Click(object sender, MouseButtonEventArgs e) => _vm.ClearTimeRange();
+
+    private void TimelineArea_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_timelineMinutes <= 0) return;
+
+        var pos = e.GetPosition(TimelineArea);
+        var block = (e.OriginalSource as FrameworkElement)?.Tag as TimelineBlock;
+
+        // Double-click a block to select its time span
+        if (e.ClickCount == 2)
+        {
+            if (block != null) _vm.SetTimeRange(block.StartTime, block.EndTime);
+            e.Handled = true;
+            return;
+        }
+
+        // Grabbing an edge of the current selection resizes it from the opposite edge
+        var edge = HitRangeEdge(pos);
+        if (edge is double anchorX)
+        {
+            _dragOrigin = new Point(anchorX, pos.Y);
+            _dragOriginBlock = null;
+            _isDragging = true;
+        }
+        else
+        {
+            _dragOrigin = pos;
+            _dragOriginBlock = block;
+            _isDragging = false;
+        }
+
+        HideHover();
+        TimelineArea.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void TimelineArea_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_timelineMinutes <= 0) return;
+        var pos = e.GetPosition(TimelineArea);
+
+        if (_dragOrigin is not Point origin || !TimelineArea.IsMouseCaptured)
+        {
+            UpdateHover(pos.X);
+            TimelineArea.Cursor = HitRangeEdge(pos) != null ? Cursors.SizeWE : Cursors.IBeam;
+            return;
+        }
+
+        if (!_isDragging && Math.Abs(pos.X - origin.X) < DragThreshold) return;
+        _isDragging = true;
+
+        var (start, end) = GetDragRange(origin.X, pos.X);
+        DrawSelection(start, end);
+        SetRangeLabel(start, end);
+    }
+
+    private void TimelineArea_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_dragOrigin is not Point origin) return;
+
+        var pos = e.GetPosition(TimelineArea);
+        bool wasDragging = _isDragging;
+        var clickedBlock = _dragOriginBlock;
+        EndDrag();
+        e.Handled = true;
+
+        if (wasDragging)
+        {
+            var (start, end) = GetDragRange(origin.X, pos.X);
+            _vm.SetTimeRange(start, end);
+        }
+        else if (pos.Y >= TimelineCanvas.ActualHeight)
+        {
+            // Click on the hour-label row selects that whole hour
+            var (start, _) = GetDragRange(pos.X, pos.X);
+            var hourStart = TimeSpan.FromHours(Math.Floor(start.TotalHours));
+            var hourEnd = hourStart + TimeSpan.FromHours(1);
+            if (hourEnd > _timelineStart + TimeSpan.FromMinutes(_timelineMinutes))
+                hourEnd = _timelineStart + TimeSpan.FromMinutes(_timelineMinutes);
+            _vm.SetTimeRange(hourStart, hourEnd);
+        }
+        else if (clickedBlock != null)
+        {
+            _vm.SelectApp(clickedBlock.ProcessName);
+        }
+        else if (_vm.HasTimeRange)
+        {
+            _vm.ClearTimeRange();
+        }
+        else
+        {
+            _vm.SelectAll();
+        }
+    }
+
+    private void TimelineArea_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (!TimelineArea.IsMouseCaptured) HideHover();
+    }
+
+    private void TimelineArea_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        // Capture lost mid-drag (e.g. window deactivated): cancel the drag
+        if (_dragOrigin == null) return;
+        EndDrag();
+        RenderTimeline();
+    }
+
+    private void EndDrag()
+    {
+        _dragOrigin = null;
+        _dragOriginBlock = null;
+        _isDragging = false;
+        if (TimelineArea.IsMouseCaptured)
+            TimelineArea.ReleaseMouseCapture();
+    }
+
+    /// <summary>
+    /// Returns the x of the opposite edge when pos is near an edge of the selected range.
+    /// Only the block row has handles; the hour-label row below is for hour clicks.
+    /// </summary>
+    private double? HitRangeEdge(Point pos)
+    {
+        if (_vm.RangeStart is not TimeSpan start || _vm.RangeEnd is not TimeSpan end) return null;
+        if (pos.Y >= TimelineCanvas.ActualHeight) return null;
+        double x = pos.X;
+        double sx1 = TimeToX(start);
+        double sx2 = TimeToX(end);
+        if (Math.Abs(x - sx1) <= EdgeGrabWidth) return sx2;
+        if (Math.Abs(x - sx2) <= EdgeGrabWidth) return sx1;
+        return null;
+    }
+
+    private void UpdateHover(double x)
+    {
+        double width = TimelineCanvas.ActualWidth;
+        if (x < 0 || x > width) { HideHover(); return; }
+
+        var time = _timelineStart + TimeSpan.FromMinutes(Math.Floor(x / width * _timelineMinutes));
+
+        if (_hoverLine == null || _hoverLabel == null)
+        {
+            var accent = (SolidColorBrush)FindResource("ThemeAccent");
+            _hoverLine = new Line { Stroke = accent, StrokeThickness = 1 };
+            _hoverLabel = new TextBlock
+            {
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 11,
+                Foreground = (Brush)FindResource("ThemeBg"),
+                Background = accent,
+                Padding = new Thickness(3, 0, 3, 0)
+            };
+            TimelineHover.Children.Add(_hoverLine);
+            TimelineHover.Children.Add(_hoverLabel);
+        }
+
+        _hoverLine.X1 = _hoverLine.X2 = x;
+        _hoverLine.Y1 = 0;
+        _hoverLine.Y2 = TimelineCanvas.ActualHeight;
+
+        _hoverLabel.Text = LogAnalyzer.FormatClock(time);
+        _hoverLabel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double labelWidth = _hoverLabel.DesiredSize.Width;
+        Canvas.SetLeft(_hoverLabel, Math.Clamp(x - labelWidth / 2, 0, Math.Max(0, width - labelWidth)));
+        Canvas.SetTop(_hoverLabel, TimelineCanvas.ActualHeight + 1);
+
+        TimelineHover.Visibility = Visibility.Visible;
+    }
+
+    private void HideHover() => TimelineHover.Visibility = Visibility.Collapsed;
+
+    /// <summary>Converts two x positions into a minute-snapped time range.</summary>
+    private (TimeSpan Start, TimeSpan End) GetDragRange(double xa, double xb)
+    {
+        double width = TimelineCanvas.ActualWidth;
+        double lo = Math.Clamp(Math.Min(xa, xb), 0, width);
+        double hi = Math.Clamp(Math.Max(xa, xb), 0, width);
+
+        int startMin = (int)Math.Floor(lo / width * _timelineMinutes);
+        int endMin = (int)Math.Ceiling(hi / width * _timelineMinutes);
+        if (endMin <= startMin) endMin = startMin + 1;
+
+        return (_timelineStart + TimeSpan.FromMinutes(startMin),
+                _timelineStart + TimeSpan.FromMinutes(endMin));
+    }
+
+    private double TimeToX(TimeSpan time) =>
+        (time - _timelineStart).TotalMinutes / _timelineMinutes * TimelineCanvas.ActualWidth;
+
+    private void UpdateRangeLabel()
+    {
+        if (_vm.RangeStart is TimeSpan start && _vm.RangeEnd is TimeSpan end)
+        {
+            SetRangeLabel(start, end);
+            ClearRangeButton.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            RangeLabel.Text = "Drag: select range / Click hour: select hour";
+            RangeLabel.Foreground = (Brush)FindResource("ThemeDimText");
+            ClearRangeButton.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void SetRangeLabel(TimeSpan start, TimeSpan end)
+    {
+        RangeLabel.Text = $"{LogAnalyzer.FormatClock(start)} - {LogAnalyzer.FormatClock(end)}" +
+                          $" ({LogAnalyzer.FormatTime((int)(end - start).TotalMinutes)})";
+        RangeLabel.Foreground = (Brush)FindResource("ThemeAccent");
+    }
+
     private void RenderTimeline()
     {
         TimelineCanvas.Children.Clear();
         TimelineHourLabels.Children.Clear();
+        _timelineMinutes = 0;
+        UpdateRangeLabel();
 
         if (!_vm.IsDayView || _vm.TimelineBlocks.Count == 0)
             return;
@@ -140,8 +418,11 @@ public partial class AnalysisWindow : Window
         var rangeStart = TimeSpan.FromHours(startHour);
         var rangeEnd = TimeSpan.FromHours(endHour);
         double totalMinutes = (rangeEnd - rangeStart).TotalMinutes;
+        _timelineStart = rangeStart;
+        _timelineMinutes = totalMinutes;
 
         var colors = _vm.ProcessColors;
+        var selectedApp = _vm.SelectedAppName;
         var defaultBrush = new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80));
         defaultBrush.Freeze();
 
@@ -162,14 +443,18 @@ public partial class AnalysisWindow : Window
                 RadiusX = 1,
                 RadiusY = 1,
                 ToolTip = BuildTooltip(block),
-                Cursor = Cursors.Hand
+                Tag = block,
+                // Dim blocks of other apps while one app is selected
+                Opacity = selectedApp == "" || selectedApp == block.ProcessName ? 1.0 : 0.3
             };
-            rect.MouseLeftButtonDown += (_, _) => _vm.SelectApp(block.ProcessName);
 
             Canvas.SetLeft(rect, x1);
             Canvas.SetTop(rect, 0);
             TimelineCanvas.Children.Add(rect);
         }
+
+        if (_vm.RangeStart is TimeSpan selStart && _vm.RangeEnd is TimeSpan selEnd)
+            DrawSelection(selStart, selEnd);
 
         // Draw hour labels
         var labelBrush = (SolidColorBrush)FindResource("ThemeText");
@@ -198,10 +483,74 @@ public partial class AnalysisWindow : Window
                 FontSize = 10,
                 Foreground = labelBrush
             };
-            Canvas.SetLeft(label, x);
+            // Keep the last label inside the canvas instead of clipping it
+            label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            Canvas.SetLeft(label, Math.Min(x, canvasWidth - label.DesiredSize.Width));
             Canvas.SetTop(label, 0);
             TimelineHourLabels.Children.Add(label);
         }
+    }
+
+    /// <summary>
+    /// Draws the selection for [start, end): shades the outside, outlines the inside and
+    /// puts grab handles on both edges. Replaces any previously drawn selection.
+    /// </summary>
+    private void DrawSelection(TimeSpan start, TimeSpan end)
+    {
+        var old = TimelineCanvas.Children.OfType<FrameworkElement>()
+            .Where(el => el.Tag == SelectionTag).ToList();
+        foreach (var el in old) TimelineCanvas.Children.Remove(el);
+
+        double width = TimelineCanvas.ActualWidth;
+        double height = TimelineCanvas.ActualHeight;
+        double sx1 = Math.Clamp(TimeToX(start), 0, width);
+        double sx2 = Math.Clamp(TimeToX(end), 0, width);
+
+        var accent = (SolidColorBrush)FindResource("ThemeAccent");
+        var bg = (SolidColorBrush)FindResource("ThemeBg");
+        var shade = new SolidColorBrush(bg.Color) { Opacity = 0.7 };
+        shade.Freeze();
+
+        AddSelectionRect(0, sx1, height, 0, shade, null);
+        AddSelectionRect(sx2, width - sx2, height, 0, shade, null);
+        AddSelectionRect(sx1, sx2 - sx1, height, 0, null, accent);
+
+        // Edge handles (centered on the edge, with a grip line in the middle)
+        foreach (var x in new[] { sx1, sx2 })
+        {
+            double hx = Math.Clamp(x - HandleWidth / 2, 0, width - HandleWidth);
+            AddSelectionRect(hx, HandleWidth, height, 2, accent, null);
+            var grip = new Line
+            {
+                X1 = hx + HandleWidth / 2, X2 = hx + HandleWidth / 2,
+                Y1 = height * 0.3, Y2 = height * 0.7,
+                Stroke = bg,
+                StrokeThickness = 1,
+                IsHitTestVisible = false,
+                Tag = SelectionTag
+            };
+            TimelineCanvas.Children.Add(grip);
+        }
+    }
+
+    private void AddSelectionRect(double x, double width, double height, double radius, Brush? fill, Brush? stroke)
+    {
+        if (width <= 0) return;
+        var rect = new Rectangle
+        {
+            Width = width,
+            Height = height,
+            Fill = fill,
+            Stroke = stroke,
+            StrokeThickness = stroke != null ? 1.5 : 0,
+            RadiusX = radius,
+            RadiusY = radius,
+            IsHitTestVisible = false,
+            Tag = SelectionTag
+        };
+        Canvas.SetLeft(rect, x);
+        Canvas.SetTop(rect, 0);
+        TimelineCanvas.Children.Add(rect);
     }
 
     private static object BuildTooltip(TimelineBlock block)

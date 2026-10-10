@@ -72,7 +72,7 @@ public partial class MainWindow : Window
             {
                 _settings.WindowLeft = Left;
                 _settings.WindowTop = Top;
-                _settings.Save();
+                AppSettings.Update(s => { s.WindowLeft = Left; s.WindowTop = Top; });
             };
         };
 
@@ -140,7 +140,7 @@ public partial class MainWindow : Window
         _showTitle = value;
         ToggleTitleMenu.IsChecked = value;
         _settings.ShowTitle = value;
-        _settings.Save();
+        AppSettings.Update(s => s.ShowTitle = value);
         RefreshList();
     }
 
@@ -148,7 +148,7 @@ public partial class MainWindow : Window
     {
         _showWhenIdle = value;
         _settings.ShowWhenIdle = value;
-        _settings.Save();
+        AppSettings.Update(s => s.ShowWhenIdle = value);
 
         if (!value)
         {
